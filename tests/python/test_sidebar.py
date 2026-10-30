@@ -32,6 +32,9 @@ class SidebarTests(unittest.TestCase):
         package.start()
         self.addCleanup(package.stop)
         spec.loader.exec_module(self.addon)
+        settings_dialog = patch.object(self.addon, "show_settings")
+        self.show_settings = settings_dialog.start()
+        self.addCleanup(settings_dialog.stop)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.addon.runtime.user_files = Path(directory.name)
@@ -44,6 +47,17 @@ class SidebarTests(unittest.TestCase):
         self.assertEqual(self.aqt.gui_hooks.profile_did_open, [self.addon.profile_opened])
         self.qt.QDockWidget.assert_not_called()
         self.aqt.mw.form.menuTools.addAction.assert_called_once_with(self.addon.menu_action)
+
+    def test_first_run_opens_native_setup_and_completed_setup_does_not_repeat(self):
+        self.addon.profile_opened()
+        self.show_settings.assert_called_once_with()
+        self.addon.runtime.store.update_settings(setupComplete=True)
+        self.addon.close_sidebar()
+        self.show_settings.reset_mock()
+        self.addon.profile_opened()
+        self.show_settings.assert_not_called()
+        self.addon.panel_command(self.addon.sidebar.widget(), "wayoom:v1:settings")
+        self.show_settings.assert_called_once_with()
 
     def test_first_profile_load_opens_panel_automatically_and_loads_ui_once(self):
         # PANEL-02: the initial panel opens via the profile hook, without a

@@ -1,0 +1,15 @@
+{
+  "cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": "c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf",
+  "cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": "a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2",
+  "cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": "b0431303acaea1089ad4b3e9ce4e6518193def1118d4073ca848635ee4ea2e96",
+  "cryptography-50.0.2-cp311-abi3-manylinux_2_28_x86_64.whl": "4061c0079120205fb760c58acab6443e217307dcf05e3702cf970e0689972856",
+  "jaraco.classes-3.4.0-py3-none-any.whl": "f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790",
+  "jaraco_context-6.1.2-py3-none-any.whl": "bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535",
+  "jaraco_functools-4.6.0-py3-none-any.whl": "99e3dc0060c5cbe8fcd1cdb36258e2a65ca40f1566b2033b12abb1bb44dd3c30",
+  "jeepney-0.9.0-py3-none-any.whl": "97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683",
+  "keyring-25.7.0-py3-none-any.whl": "be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f",
+  "more_itertools-11.2.1-py3-none-any.whl": "35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0",
+  "pycparser-3.12-py3-none-any.whl": "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e",
+  "pywin32_ctypes-0.2.3-py3-none-any.whl": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8",
+  "secretstorage-3.5.0-py3-none-any.whl": "0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137"
+}

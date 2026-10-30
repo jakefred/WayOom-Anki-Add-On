@@ -3,7 +3,8 @@ export { createProviderModel, generateText, Output, jsonSchema } from './sdk.mjs
 let recoveryKey = '';
 window.wayoomSetState = state => {
   document.querySelector('#message').textContent = state.message;
-  document.querySelector('#provider').textContent = state.provider ? `Provider: ${state.provider}` : '';
+  const provider = state.provider ?? state.configuredProvider;
+  document.querySelector('#provider').textContent = provider ? `Provider: ${provider}` : '';
   document.querySelector('#cancel').hidden = !['generating', 'validating', 'adding'].includes(state.state);
   document.querySelector('#cancel').disabled = state.state === 'adding';
   document.querySelector('#view-cards').hidden = !state.canView;
@@ -36,3 +37,4 @@ window.wayoomSetState = state => {
 document.querySelector('#cancel').addEventListener('click', () => pycmd('wayoom:v1:cancel'));
 document.querySelector('#view-cards').addEventListener('click', () => pycmd('wayoom:v1:view-cards'));
 document.querySelector('#repair-note-type').addEventListener('click', () => pycmd('wayoom:v1:repair-note-type'));
+document.querySelector('#settings').addEventListener('click', () => pycmd('wayoom:v1:settings'));

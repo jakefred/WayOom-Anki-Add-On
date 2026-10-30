@@ -4,13 +4,16 @@ from .jobs import JobCoordinator
 from .operations import add_cards_in_background, recover_in_background, repair_type_in_background
 from .storage import ProfileStore, job_tag
 from .validation import ValidationError
+from .credentials import CredentialService, CredentialError
 
 
 class ApplicationRuntime:
-    def __init__(self, user_files, parent):
+    def __init__(self, user_files, parent, credentials=None):
         self.user_files = user_files
         self.parent = parent
         self.coordinator = JobCoordinator()
+        self.credentials = credentials if credentials is not None else CredentialService()
+        self.configuration = {"providers": {}, "activeProviderId": None, "setupRequired": True}
         self.profile = self.collection = self.store = None
         self.ready = False
         self.recovered = {}
@@ -24,6 +27,7 @@ class ApplicationRuntime:
         self.close_profile()
         self.profile, self.collection = profile, collection
         self.store = ProfileStore(self.user_files, profile)
+        self.refresh_configuration()
         self.coordinator.open_profile(profile, collection)
         epoch = self._epoch
 
@@ -46,6 +50,8 @@ class ApplicationRuntime:
         self._epoch += 1
         if self.profile is not None:
             self.coordinator.close_profile(self.profile)
+        if self.store is not None:
+            self.credentials.close_profile(self.store)
         self.profile = self.collection = self.store = None
         self.ready = False
         self.recovered = {}
@@ -53,6 +59,26 @@ class ApplicationRuntime:
         self.error = None
         self.failure_action = None
         self.repairing = False
+        self.configuration = {"providers": {}, "activeProviderId": None, "setupRequired": True}
+
+    def refresh_configuration(self):
+        if self.store is not None:
+            self.configuration = self.credentials.summary(self.store)
+
+    def settings_guard(self):
+        job = self.coordinator.snapshot(self.profile)
+        if job and job["state"] in {"generating", "validating", "adding"}:
+            raise CredentialError("Cancel or finish the current generation before changing settings")
+
+    def start_configured_job(self, request):
+        """Production generation entry: Python selects nonsecret provider references."""
+        self.refresh_configuration()
+        active = self.configuration["activeProviderId"]
+        if self.configuration["setupRequired"] or not active:
+            raise CredentialError("Setup required: configure an available provider key")
+        config = self.store.settings()["providers"][active]
+        settings = {key: config[key] for key in ("credentialRef", "modelId") if key in config}
+        return self.start_job({**request, "providerId": active}, settings)
 
     def start_job(self, request, settings):
         if not self.ready or self.repairing:
@@ -160,6 +186,13 @@ class ApplicationRuntime:
         return browser
 
     def panel_state(self):
+        state = self._panel_state()
+        if state["state"] == "ready" and self.configuration["setupRequired"]:
+            state["message"] = "Setup required. Open Settings to configure a provider."
+        return {**state, "setupRequired": self.configuration["setupRequired"],
+                "configuredProvider": self.configuration["activeProviderId"]}
+
+    def _panel_state(self):
         recovery_jobs = [item["requestId"] for item in self.store.jobs()
                          if item["state"] == "uncertain"] if self.store and self.ready else []
         if recovery_jobs:

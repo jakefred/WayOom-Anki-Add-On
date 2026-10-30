@@ -10,7 +10,7 @@ test('self-contained browser bundle loads SDK and updates the panel without Node
     append(...children) { this.children = children; },
   });
   const elements = Object.fromEntries(['message', 'provider', 'cancel', 'view-cards',
-    'repair-note-type', 'failure-action', 'recovery-jobs'].map(id => [
+    'repair-note-type', 'failure-action', 'recovery-jobs', 'settings'].map(id => [
     `#${id}`, makeElement(),
   ]));
   const commands = [];
@@ -53,4 +53,6 @@ test('self-contained browser bundle loads SDK and updates the panel without Node
   assert.equal(elements['#recovery-jobs'].children.length, 0);
   elements['#repair-note-type'].click();
   assert.equal(commands.at(-1), 'wayoom:v1:repair-note-type');
+  elements['#settings'].click();
+  assert.equal(commands.at(-1), 'wayoom:v1:settings');
 });

@@ -37,6 +37,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-test.txt
 npm ci --ignore-scripts
 npm run build
+python scripts/build_credentials.py
 ```
 
 On macOS/Linux, use `.venv/bin/python` instead of `.venv\Scripts\python.exe`.
@@ -120,17 +121,67 @@ retains earlier type IDs so removing a note's tags cannot hide it from this chec
 Backend tests cover preservation and duplicate rejection; scheduling and the repair
 button are tested with Qt/DOM doubles.
 
+## Credentials, setup, and removal
+
+`wayoom/credentials.py` lazily loads specific OS keyring backends. All runtime
+dependencies are pinned and vendored as wheels with SHA-256 hashes; the offline
+credential build verifies and extracts them. CI runs this build. See
+[vendor/README.md](vendor/README.md) for dependency purposes and supported Linux
+ABIs. Windows and macOS use native ctypes backends; Linux uses Secret Service.
+No configurable plaintext backend is selected. Actual OS-store behavior on each
+platform is still a human verification gate.
+
+First-run setup and Settings are native modal Qt dialogs, with masked blank key
+inputs, status labels, provider selection, model overrides, remove controls,
+billing/privacy/storage disclosures, and provider key-management links. Saving
+a key marks it untested. The connection-test buttons are disabled until milestone
+3 supplies the SDK bridge path described in the revised implementation plan.
+Saving changes across several providers is sequential; after a partial failure,
+the dialog clears key inputs, refreshes saved status, and reports that some changes
+may already have been saved. Cancel discards unsaved input. Only one settings
+dialog can be open; profile close rejects it and clears inputs.
+
+Secrets are kept in the OS store or explicitly in session memory, never settings
+or webview state. Persisted references are immutable per replacement; old references
+never fall back to replacement keys. A nonsecret cleanup journal is written before
+OS writes so interrupted saves and failed replacement deletions remain removable.
+Session-only keys are discarded when the profile closes, even though the now
+unavailable nonsecret reference remains in settings. Setup-required status is
+refreshed at profile open, settings changes, and generation start; it does not poll
+or prompt the OS store every 500 ms. An unavailable active provider does not
+silently switch to another configured provider.
+
+The generation bridge must use `ApplicationRuntime.start_configured_job()` to
+snapshot the selected provider/reference from Python. Settings mutations are
+blocked while a job is running, preserving its credential choice. Existing core
+tests still call the lower-level `start_job()` with explicit nonsecret references.
+The form and bridge that will call the configured entry point are not built yet.
+
+Credential tests use a fake vault and disposable files. They cover save, replace,
+remove, profile/installation isolation, unavailable stores, explicit session opt-in,
+session cleanup, active-provider selection, interrupted saves, deletion failures,
+and removal across profiles. They check that secrets do not appear in settings,
+cleanup journals, summaries, formatted exceptions, logs, job snapshots, or panel
+state. Native dialog tests use Qt doubles for masked fields, cancel/save/removal,
+status, and disclosures. An isolated-interpreter import check verifies vendored
+backend dependencies without reading or writing any real OS credential store.
+
+Before uninstalling WayOom, open **Settings → Remove all keys — every profile**.
+Wait for confirmed success. If removal cannot be confirmed, retry while protected
+storage is accessible, or revoke the keys through the provider links in Settings.
+Uninstalling the add-on alone may leave keys in the OS credential store.
+
 ## Coverage limits and remaining work
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
 
-- Provider API calls, SDK model compatibility, credentials/onboarding, and live transport retry/cancellation behavior.
+- Provider API calls, SDK model compatibility, real credential stores and native onboarding behavior, and live transport retry/cancellation behavior.
 - The dedicated AI naming call and generation orchestration (local title repair, naming-before-cards authorization, and new-deck insertion are tested).
 - A live provider bridge, real Qt rendering, or user-driven review sessions. The panel exposes cancel, view-cards, uncertain-job inspection/acknowledgment, and guarded note-type repair commands. No generation commit command exists yet.
-- OS credential-store integration, setup/settings dialogs, provider allowlists and redirect handling, SDK browser compatibility, and real provider cancellation. Abort callbacks are tested with doubles, not live HTTP requests.
+- Provider allowlists and redirect handling, SDK browser compatibility, and real provider cancellation. OS credential operations and setup/settings dialog logic are implemented but tested with doubles. Abort callbacks are tested with doubles, not live HTTP requests.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
-Use `ApplicationRuntime.start_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers recovery and repair controls; it does not yet offer provider setup or a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.
+Use `ApplicationRuntime.start_configured_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers native Settings, recovery, and repair controls; it does not yet offer a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.
 
 The pinned integration target is Anki **26.9.3**. This does not establish a minimum supported Anki version. The GitHub Actions workflow runs these suites on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 

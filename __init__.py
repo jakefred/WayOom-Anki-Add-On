@@ -8,6 +8,7 @@ from .wayoom.runtime import ApplicationRuntime
 from .wayoom.validation import ValidationError
 
 sidebar = None
+settings_dialog = None
 runtime = ApplicationRuntime(Path(__file__).with_name("user_files"), mw)
 status_timer = QTimer(mw)
 status_timer.setInterval(500)
@@ -55,6 +56,38 @@ def profile_opened() -> None:
     status_timer.start()
     menu_action.setEnabled(True)
     menu_action.setChecked(visible)
+    if not runtime.store.settings().get("setupComplete", False):
+        show_settings()
+
+
+def show_settings():
+    global settings_dialog
+    if runtime.store is None or settings_dialog is not None:
+        return
+    from .wayoom.settings import SettingsController
+    from .wayoom.settings_dialog import SettingsDialog
+    store = runtime.store
+    epoch = runtime._epoch
+
+    def guard():
+        if runtime.store is not store or runtime._epoch != epoch:
+            raise ValidationError("The active profile changed. Reopen settings.")
+        runtime.settings_guard()
+
+    def changed():
+        if runtime.store is store and runtime._epoch == epoch:
+            runtime.refresh_configuration()
+            refresh_status()
+
+    dialog = SettingsDialog(mw, SettingsController(runtime.credentials, store, guard), changed)
+    settings_dialog = dialog
+    try:
+        dialog.exec()
+    finally:
+        dialog.clear_keys()
+        dialog.deleteLater()
+        settings_dialog = None
+        changed()
 
 
 def refresh_status() -> None:
@@ -68,7 +101,9 @@ def panel_command(web, command):
     # serialized operation; inspection searches use only saved job IDs.
     if sidebar is None or sidebar.widget() is not web or runtime.store is None:
         return None
-    if command == "wayoom:v1:view-cards" and runtime.outcome:
+    if command == "wayoom:v1:settings":
+        show_settings()
+    elif command == "wayoom:v1:view-cards" and runtime.outcome:
         runtime.view_cards(runtime.outcome["requestId"])
     elif command == "wayoom:v1:cancel":
         job = runtime.coordinator.snapshot(runtime.profile)
@@ -109,6 +144,8 @@ def toggle_sidebar(_checked=False) -> None:
 def close_sidebar() -> None:
     global sidebar
     runtime.close_profile()
+    if settings_dialog is not None:
+        settings_dialog.reject()
     status_timer.stop()
     menu_action.setEnabled(False)
     menu_action.setChecked(False)
