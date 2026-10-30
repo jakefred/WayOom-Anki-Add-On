@@ -311,6 +311,16 @@ class AnkiCardIntegrationTests(unittest.TestCase):
             self.insert(result)
         self.assertEqual(self.col.card_count(), 1)
 
+    def test_duplicate_in_filtered_deck_is_checked_against_home_deck(self):
+        self.insert()
+        card = self.col.get_card(self.col.find_cards("")[0])
+        card.odid = self.deck_id
+        card.did = self.col.decks.new_filtered("Filtered")
+        self.col.update_card(card)
+        with self.assertRaisesRegex(ValidationError, "already exists"):
+            self.insert()
+        self.assertEqual(self.col.card_count(), 1)
+
     def test_actual_backend_transaction_rolls_back_if_second_note_is_invalid(self):
         original_add = self.col.add_notes
 

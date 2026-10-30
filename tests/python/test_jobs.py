@@ -117,3 +117,35 @@ class JobTests(unittest.TestCase):
         self.assertEqual(self.jobs.snapshot("a")["state"], "failed")
         self.assertEqual(abort, [True])
         self.assertNotEqual(self.start(), rid)
+
+    def test_validation_can_resume_calls_without_resetting_budgets(self):
+        rid = self.start()
+        self.jobs.consume_call("a", rid, "anthropic")
+        self.jobs.begin_validation("a", rid)
+        self.jobs.consume_call("a", rid, "anthropic")
+        self.assertEqual(self.jobs.snapshot("a")["state"], "generating")
+        self.assertEqual(self.jobs.snapshot("a")["callsUsed"], 2)
+        self.jobs.begin_validation("a", rid)
+        self.jobs.register_abort("a", rid, lambda: None)
+
+    def test_failed_retry_retains_name_but_cancel_or_changed_input_discards_it(self):
+        self.request["destination"] = {"mode": "new", "name": None}
+        rid = self.start()
+        self.jobs.consume_call("a", rid, "anthropic", stage="naming")
+        self.jobs.naming_complete("a", rid, "Cells")
+        self.jobs.fail("a", rid)
+        retry = self.start()
+        self.assertNotEqual(retry, rid)
+        self.assertEqual(self.jobs.snapshot("a")["deckName"], "Cells")
+        self.jobs.consume_call("a", retry, "anthropic")
+        self.assertEqual(self.jobs.snapshot("a")["callsUsed"], 1)
+        self.jobs.cancel("a", retry)
+        self.assertIsNone(self.jobs.snapshot("a")["deckName"])
+        rid = self.start()
+        self.assertIsNone(self.jobs.snapshot("a")["deckName"])
+        self.jobs.consume_call("a", rid, "anthropic", stage="naming")
+        self.jobs.naming_complete("a", rid, "Cells")
+        self.jobs.fail("a", rid)
+        self.request["topic"] = "Changed"
+        self.start()
+        self.assertIsNone(self.jobs.snapshot("a")["deckName"])

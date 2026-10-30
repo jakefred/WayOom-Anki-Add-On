@@ -10,7 +10,7 @@ from types import ModuleType
 import unittest
 from unittest.mock import Mock, patch
 
-from wayoom.operations import add_cards_in_background
+from wayoom.operations import add_cards_in_background, repair_type_in_background
 from wayoom.validation import ValidationError
 
 FIXTURES = json.loads((Path(__file__).parents[1] / "fixtures" / "validation.json").read_text(encoding="utf-8"))
@@ -70,3 +70,19 @@ class OperationTests(unittest.TestCase):
         args = self.cards.commit_generation.call_args.args
         self.assertEqual(args[1]["destination"]["deckId"], 1)
         self.assertEqual(args[2]["cards"][0]["back"], "DNA")
+
+    def test_repair_is_serialized_and_checks_profile_before_mutating(self):
+        self.cards.repair_basic_notetype = Mock()
+        coordinator = Mock()
+        col = Mock()
+        repair_type_in_background(self.parent, col, coordinator=coordinator, store=self.store,
+                                  profile="profile", on_complete=Mock(), on_failure=Mock())
+        op = self.operations.CollectionOp.call_args.kwargs["op"]
+        self.cards.repair_basic_notetype.assert_not_called()
+        with self.assertRaises(ValidationError):
+            op(object())
+        self.cards.repair_basic_notetype.assert_not_called()
+        op(col)
+        coordinator.require_profile.assert_called_once_with("profile", col)
+        self.cards.repair_basic_notetype.assert_called_once_with(col, self.store)
+        col.merge_undo_entries.assert_called_once_with(col.add_custom_undo_entry.return_value)

@@ -128,13 +128,19 @@ Fill this in as you go, in this section.
 - **Decisions made beyond this plan:**
   - Milestone 0: use an IIFE browser bundle targeting Chrome 100, served with Anki's `setWebExports` and `stdHtml(js=...)`. Require an explicit custom fetch when creating an SDK model. Real Qt compatibility remains unverified.
   - Pinned `ai` 7.0.158, OpenAI 4.0.106, Anthropic 4.0.93, Google 4.0.109, xAI 5.0.34, Mistral 4.0.76 for the planned SDK engine; esbuild 0.28.2 is build-only. Versions were resolved from npm. The documented structured API is `generateText` with `Output.object`; no generation is wired yet.
+  - Milestone 1: retain the most recent 100 terminal job records at startup/new-job boundaries; never prune unresolved evidence. Committed outcomes are historical and final, including after Undo. Acknowledgment is a terminal `acknowledged` record, changes no cards, and never retries automatically.
+  - Repair creates a replacement owned type rather than modifying the old one. Keep nonsecret `ownedNotetypeIds` so earlier types remain checked even when tags are removed. Filtered cards are checked by home deck. Unchanged retries also require identical model/credential references to reuse a title; this is stricter than UX-06's input list.
 - **Spec and doc changes:**
   - TESTING.md now documents the build step, generated asset, SDK boundary, and exact scope of the browser-bundle test. No spec edits yet.
+  - TESTING.md now describes final records, bounded history, acknowledgment, definitive failure actions, retained titles, and note-type repair. No spec edits in milestone 1; the native-settings table row and deck-name drift remain for later milestones.
 - **Existing tests changed, and why:**
   - Extended the sidebar load test to assert the exported bundle URL and absence of inline scripts after moving existing JavaScript into the bundled entry point. No existing expectations were weakened.
+  - Changed the Undo replay test to expect the historical committed outcome and no reinsertion, rather than rewriting a committed record to undone. Changed the partial-result test to mark the record unresolved before checking recovery; a final committed record must no longer be rechecked. Extended the bundle test for inspection, acknowledgment, repair, inert labels, and focus preservation on repeated state pushes.
 - **Test results actually observed:**
   - Baseline commit `186b426`: 63 JS, 39 Python unit, 47 real-backend integration tests passed.
   - Milestone 0: clean `npm ci --ignore-scripts` passed; bundle build passed; 64 JS, 39 Python unit, 47 real-backend integration tests passed. npm reported no vulnerabilities. All Anki collections were disposable.
   - Windows sandbox ACLs prevented esbuild reading ancestor directories; build/install verification succeeded with elevated tool execution. Git commits also required elevated execution because `.git` is read-only in the sandbox. Used command-scoped `safe.directory`, without changing global Git configuration.
+  - Milestone 1 regression tests were observed failing before fixes for startup finality, partial recovery, filtered-deck duplicates, old-type duplicates after repair, failure retry, retained titles, cancel discarding titles, history pruning, repair/recovery bridge actions, and errors after durable completion.
+  - Milestone 1 final verification: browser bundle build and all 64 JS, 49 Python unit, and 53 real-backend integration tests passed. Collection tests used disposable Anki collections; GUI/DOM controls and scheduling used doubles. No provider calls or real profiles were used.
 - **Unverified or incomplete:**
-  - Milestone 0 complete under test doubles. Milestones 1–7 remain, including all listed core defects. Real Qt/webview, provider requests, credential stores, cross-platform CI, and every human production gate remain open.
+  - Milestones 0 and 1 implemented. Milestones 2–7 remain. Retry guidance/state is available, with the working generation Retry button and retained-card engine still assigned to milestones 4/5. Real Qt/webview, provider requests, credential stores, cross-platform CI, and every human production gate remain open.

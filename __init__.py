@@ -5,6 +5,7 @@ from aqt import gui_hooks, mw
 from aqt.qt import QAction, QDockWidget, QTimer, Qt, QWidget
 from aqt.webview import AnkiWebView
 from .wayoom.runtime import ApplicationRuntime
+from .wayoom.validation import ValidationError
 
 sidebar = None
 runtime = ApplicationRuntime(Path(__file__).with_name("user_files"), mw)
@@ -63,8 +64,8 @@ def refresh_status() -> None:
 
 
 def panel_command(web, command):
-    # This handler belongs only to the live WayOom webview. It exposes no
-    # collection-write, credential, URL, or arbitrary search commands.
+    # This handler belongs only to the live WayOom webview. Repair is a guarded,
+    # serialized operation; inspection searches use only saved job IDs.
     if sidebar is None or sidebar.widget() is not web or runtime.store is None:
         return None
     if command == "wayoom:v1:view-cards" and runtime.outcome:
@@ -74,6 +75,24 @@ def panel_command(web, command):
         if job and job["state"] in {"generating", "validating"}:
             runtime.coordinator.cancel(runtime.profile, job["request"]["requestId"])
             refresh_status()
+    elif command.startswith(("wayoom:v1:inspect:", "wayoom:v1:acknowledge:")):
+        action, request_id = command[len("wayoom:v1:"):].split(":", 1)
+        try:
+            record = runtime.store.job(request_id)
+            if record is not None and record["state"] == "uncertain":
+                if action == "inspect":
+                    runtime.view_cards(request_id)
+                else:
+                    runtime.acknowledge_job(request_id)
+                refresh_status()
+        except ValidationError:
+            return None
+    elif command == "wayoom:v1:repair-note-type":
+        try:
+            runtime.repair_note_type()
+            refresh_status()
+        except ValidationError:
+            return None
     return None
 
 

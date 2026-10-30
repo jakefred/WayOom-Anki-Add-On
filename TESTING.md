@@ -12,7 +12,7 @@ The project has local validation, profile-bound job authorization, nonsecret per
 
 The GUI scheduling and sidebar unit tests use explicit Qt/`aqt` test doubles. They do **not** claim to exercise a real Qt window. The backend integration suite does **not** mock card creation, rendering, persistence, or Undo. Fault-injection tests deliberately corrupt one backend request or alter a returned count to test failure handling.
 
-The sidebar tests verify automatic initial opening, Tools-menu toggling, per-profile visibility persistence, preservation of running jobs while hidden, profile-close invalidation, and restriction of panel commands to the current webview. These tests use Qt doubles; actual window visibility, rendering, browser opening, and interaction during review still require real Qt verification.
+The sidebar tests verify automatic initial opening, Tools-menu toggling, per-profile visibility persistence, preservation of running jobs while hidden, profile-close invalidation, and restriction of panel commands to the current webview. Recovery inspection and acknowledgment commands accept only saved uncertain job IDs. A repair command schedules guarded note-type replacement. These tests use Qt doubles; actual window visibility, rendering, browser opening, and interaction during review still require real Qt verification.
 
 ## Supported card contract
 
@@ -86,7 +86,39 @@ Call collection-writing functions only through Anki's serialized operation mecha
 
 `commit_generation()` validates the full result, checks the active job, persists intent, then creates any required deck/type and adds tagged notes within a custom merged Undo action. Tests verify that one Undo removes the deck, newly created note type, and complete batch, and that Redo restores them. Existing artifacts remain intact. Readback failures roll back the operation. Some backend failures clear Anki's undo history; that path compensates by removing only this job's tagged notes and newly created empty artifacts. Do not assume a failed backend write preserves the previous undo history, even though pre-existing cards are preserved.
 
-Saved jobs are reconciled by searching `wayoom::job::<requestId>`. A complete tagged batch returns the existing outcome; an undone or definitively uncommitted ID cannot insert again. Partial tagged batches block retry. Recovery also cleans recorded abandoned empty artifacts and refuses deletion when the new deck has acquired user cards or subdecks, its name has changed, or the new note type has been customized. A persistence failure after collection commit leaves the pending record available for reconciliation. Tests simulate interruption before insertion and after insertion but before the completion record is saved; they do not simulate process termination inside an individual backend call or OS write.
+Only pending and uncertain jobs are reconciled by searching `wayoom::job::<requestId>`.
+A complete tagged batch becomes committed. Committed records are final: moving,
+deleting, or undoing their cards does not trigger startup recovery or authorize
+reinsertion. A replay returns the historical saved outcome without writing.
+Partial unresolved batches remain uncertain and block generation, while recovery
+continues for other records. The panel offers View tagged cards and Acknowledge;
+acknowledgment persists a terminal record and deletes no collection data. It does
+not automatically retry the job. Startup and each new job prune terminal history
+to the latest 100 records, preserving every pending or uncertain record. An active
+coordinator still rejects old IDs whose historical records have been pruned.
+
+Recovery also cleans recorded abandoned empty artifacts and refuses deletion when
+the new deck has acquired user cards or subdecks, its name has changed, or the new
+note type has been customized. A persistence failure after collection commit
+leaves the pending record available for reconciliation. Tests simulate interruption
+before insertion and after insertion but before the completion record is saved;
+they do not simulate process termination inside an individual backend call or OS write.
+
+Definitive write failures and synchronous payload rejection mark the active job
+Failed and identify a reason and retry/repair action, without requiring a profile
+reopen. Pending or uncertain commits still block new jobs. Errors after a durable
+completion report the saved success. Validation can return to provider calls within
+the original budgets; insertion remains guarded against canceled or stale jobs.
+An unchanged failed job retains its AI-generated title for a new ID, with no naming
+call. Cancel, profile close, changed inputs, or changed model/credential references
+discard that title. Generation and retained-card retry orchestration remain future work.
+
+Duplicate checks include filtered cards whose home deck is the target and earlier
+owned note types after repair. Repair creates a new owned type and updates the saved
+reference without changing old notes, templates, or CSS. Nonsecret `ownedNotetypeIds`
+retains earlier type IDs so removing a note's tags cannot hide it from this check.
+Backend tests cover preservation and duplicate rejection; scheduling and the repair
+button are tested with Qt/DOM doubles.
 
 ## Coverage limits and remaining work
 
@@ -94,11 +126,11 @@ These tests do not certify the full software requirements specification. The fol
 
 - Provider API calls, SDK model compatibility, credentials/onboarding, and live transport retry/cancellation behavior.
 - The dedicated AI naming call and generation orchestration (local title repair, naming-before-cards authorization, and new-deck insertion are tested).
-- A live provider bridge, real Qt rendering, or user-driven review sessions. The panel exposes only cancel and view-cards commands; no model output or raw bridge command may call insertion directly.
+- A live provider bridge, real Qt rendering, or user-driven review sessions. The panel exposes cancel, view-cards, uncertain-job inspection/acknowledgment, and guarded note-type repair commands. No generation commit command exists yet.
 - OS credential-store integration, setup/settings dialogs, provider allowlists and redirect handling, SDK browser compatibility, and real provider cancellation. Abort callbacks are tested with doubles, not live HTTP requests.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
-Use `ApplicationRuntime.start_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and exposes Cancel and View cards; it does not yet offer provider setup or a working generation form.
+Use `ApplicationRuntime.start_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers recovery and repair controls; it does not yet offer provider setup or a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.
 
 The pinned integration target is Anki **26.9.3**. This does not establish a minimum supported Anki version. The GitHub Actions workflow runs these suites on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 

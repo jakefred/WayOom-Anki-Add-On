@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from anki.collection import Collection
 
-from wayoom.cards import commit_generation, list_destinations, reconcile_job
+from wayoom.cards import commit_generation, list_destinations, reconcile_job, reconcile_pending_jobs
 from wayoom.jobs import JobCoordinator
 from wayoom.storage import ProfileStore
 from wayoom.runtime import ApplicationRuntime
@@ -124,19 +124,104 @@ class JobDeckIntegrationTests(unittest.TestCase):
         self.start()
         self.commit()
         self.col.undo()
-        with self.assertRaises(ValidationError):
-            self.commit()
+        self.assertEqual(self.commit()["state"], "committed")
         self.assertEqual(self.col.card_count(), 0)
-        self.assertEqual(self.store.job(self.request["requestId"])["state"], "undone")
+        self.assertEqual(self.store.job(self.request["requestId"])["state"], "committed")
 
     def test_partial_tagged_result_blocks_retry(self):
         self.start()
         outcome = self.commit()["outcome"]
+        # Only unresolved records require inspection. Simulate a crash before
+        # completion was persisted, then a partial tagged batch.
+        self.store.resolve(self.request["requestId"], "uncertain")
         self.col.remove_notes([outcome["noteIds"][0]])
         with self.assertRaisesRegex(ValidationError, "uncertain"):
             reconcile_job(self.col, self.store, self.request["requestId"])
         self.assertEqual(self.store.job(self.request["requestId"])["state"], "uncertain")
         self.assertEqual(self.col.card_count(), 1)
+
+    def test_startup_ignores_final_jobs_after_card_deletion_or_move(self):
+        self.start()
+        outcome = self.commit()["outcome"]
+        self.col.remove_notes([outcome["noteIds"][0]])
+        card = self.col.get_card(outcome["cardIds"][1])
+        card.did = self.col.decks.id("Moved")
+        self.col.update_card(card)
+        self.assertEqual(reconcile_pending_jobs(self.col, self.store), {})
+        self.assertEqual(self.store.job(self.request["requestId"])["state"], "committed")
+
+    def test_partial_pending_job_is_reported_without_failing_startup(self):
+        self.start()
+        outcome = self.commit()["outcome"]
+        self.store.resolve(self.request["requestId"], "uncertain")
+        self.col.remove_notes([outcome["noteIds"][0]])
+        recovered = reconcile_pending_jobs(self.col, self.store)
+        self.assertEqual(recovered[self.request["requestId"]]["state"], "uncertain")
+        self.assertEqual(self.col.card_count(), 1)
+
+    def test_acknowledgment_survives_restart_and_preserves_all_cards(self):
+        self.start()
+        outcome = self.commit()["outcome"]
+        self.store.resolve(self.request["requestId"], "uncertain")
+        self.col.remove_notes([outcome["noteIds"][0]])
+        recovered = reconcile_pending_jobs(self.col, self.store)
+        runtime = ApplicationRuntime(self.store.directory.parent, object())
+        with patch("wayoom.runtime.recover_in_background") as recover:
+            runtime.open_profile("profile", self.col)
+            recover.call_args.kwargs["on_complete"](recovered)
+            dialogs = SimpleNamespace(open=lambda *args: SimpleNamespace(search_for=lambda query: None))
+            with patch.dict("sys.modules", {"aqt": SimpleNamespace(dialogs=dialogs)}):
+                runtime.view_cards(self.request["requestId"])
+            before = self.ids()
+            runtime.acknowledge_job(self.request["requestId"])
+            self.assertEqual(self.ids(), before)
+            runtime.close_profile()
+        reopened_store = ProfileStore(self.store.directory.parent, "profile")
+        self.assertEqual(reconcile_pending_jobs(self.col, reopened_store), {})
+        self.assertEqual(self.col.card_count(), 1)
+
+    def test_runtime_duplicate_write_failure_is_retryable(self):
+        self.start()
+        outcome = self.commit()["outcome"]
+        runtime = ApplicationRuntime(self.store.directory.parent, object())
+        with patch("wayoom.runtime.recover_in_background") as recover:
+            runtime.open_profile("profile", self.col)
+            recover.call_args.kwargs["on_complete"]({})
+        request = {**self.request, "destination": {"mode": "existing", "deckId": outcome["deckId"]}}
+        job = runtime.start_job(request, {})
+        def add(parent, col, request, result, **kwargs):
+            try:
+                commit_generation(col, request, result, kwargs["store"], kwargs["coordinator"], kwargs["profile"])
+            except Exception as error:
+                kwargs["on_failure"](error)
+        with patch("wayoom.runtime.add_cards_in_background", side_effect=add):
+            runtime.add_cards(job["request"], self.result)
+        self.assertTrue(runtime.ready)
+        self.assertEqual(runtime.panel_state()["action"], "retry")
+        self.assertIn("already exists", runtime.panel_state()["message"])
+        self.assertEqual(runtime.coordinator.snapshot("profile")["state"], "failed")
+        self.assertNotEqual(runtime.start_job(request, {})["request"]["requestId"], job["request"]["requestId"])
+        self.assertEqual(self.col.card_count(), 2)
+
+    def test_repair_creates_new_type_and_keeps_old_duplicates_visible(self):
+        from wayoom.cards import repair_basic_notetype
+        self.start()
+        outcome = self.commit()["outcome"]
+        model = self.col.models.get(outcome["notetypeId"])
+        model["tmpls"][0]["qfmt"] = "User: {{Front}}"
+        self.col.models.save(model)
+        for nid in outcome["noteIds"]:
+            note = self.col.get_note(nid)
+            note.tags = []
+            self.col.update_note(note)
+        repaired = repair_basic_notetype(self.col, self.store)
+        self.assertNotEqual(repaired, model["id"])
+        self.assertEqual(self.col.models.get(model["id"])["tmpls"][0]["qfmt"], "User: {{Front}}")
+        self.request["destination"] = {"mode": "existing", "deckId": outcome["deckId"]}
+        self.start()
+        with self.assertRaisesRegex(ValidationError, "already exists"):
+            self.commit()
+        self.assertEqual(self.col.card_count(), 2)
 
     def test_destination_listing_and_existing_subdeck_insertion(self):
         did = self.col.decks.id("Parent::Child")

@@ -44,6 +44,7 @@ class JobCoordinator:
             aborts = list(job.aborts) if job else []
             if job:
                 job.aborts.clear()
+                job.generated_name = None
         self._abort(aborts)
 
     @staticmethod
@@ -74,8 +75,15 @@ class JobCoordinator:
                 raise ValidationError("A job is already running in this profile")
             session = self._sessions[profile][0]
             needs_name = request["destination"] == {"mode": "new", "name": None}
+            retained_name = None
+            if (prior and prior.state == "failed" and prior.session == session
+                    and {k: v for k, v in prior.request.items() if k != "requestId"}
+                    == {k: v for k, v in request.items() if k != "requestId"}
+                    and prior.settings == settings):
+                retained_name = prior.generated_name
             self._jobs[profile] = _Job(request, deepcopy(settings), session,
-                                      self._clock() + 600, name_ready=not needs_name)
+                                      self._clock() + 600, name_ready=not needs_name or retained_name is not None,
+                                      generated_name=retained_name)
             return self.snapshot(profile)
 
     def _require(self, profile, request_id, states):
@@ -118,7 +126,7 @@ class JobCoordinator:
     def consume_call(self, profile, request_id, provider_id, *, stage="cards", batch=0):
         """Reserve an attempt BEFORE transport; failed attempts are not refunded."""
         with self._lock:
-            job = self._require(profile, request_id, {"generating"})
+            job = self._require(profile, request_id, {"generating", "validating"})
             if provider_id != job.request["providerId"]:
                 raise ValidationError("Provider does not match this job")
             if stage == "naming":
@@ -133,6 +141,7 @@ class JobCoordinator:
             if job.calls.get(key, 0) >= 3:
                 raise ValidationError("Provider attempt limit reached")
             job.calls[key] = job.calls.get(key, 0) + 1
+            job.state = "generating"
             return deepcopy(job.settings)
 
     def naming_complete(self, profile, request_id, name):
@@ -146,7 +155,7 @@ class JobCoordinator:
 
     def register_abort(self, profile, request_id, callback):
         with self._lock:
-            job = self._require(profile, request_id, {"generating"})
+            job = self._require(profile, request_id, {"generating", "validating"})
             job.aborts.append(callback)
         return lambda: self._remove_abort(profile, callback)
 
@@ -160,6 +169,7 @@ class JobCoordinator:
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
             job.state = "canceled"
+            job.generated_name = None
             aborts, job.aborts = job.aborts, []
         self._abort(aborts)
 

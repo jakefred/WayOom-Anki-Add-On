@@ -52,3 +52,21 @@ def recover_in_background(parent, expected_collection, *, coordinator, store, pr
     return (CollectionOp(parent=parent, op=recover)
             .success(lambda _changes: on_complete(recovered))
             .failure(on_failure).run_in_background())
+
+
+def repair_type_in_background(parent, expected_collection, *, coordinator, store, profile,
+                              on_complete, on_failure):
+    from aqt.operations import CollectionOp
+    from .cards import repair_basic_notetype
+
+    def repair(col):
+        if col is not expected_collection:
+            raise ValidationError("The active Anki profile changed")
+        coordinator.require_profile(profile, col)
+        marker = col.add_custom_undo_entry("WayOom: Repair note type")
+        repair_basic_notetype(col, store)
+        return col.merge_undo_entries(marker)
+
+    return (CollectionOp(parent=parent, op=repair)
+            .success(lambda _changes: on_complete())
+            .failure(on_failure).run_in_background())

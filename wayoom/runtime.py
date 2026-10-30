@@ -1,7 +1,7 @@
 """Application lifecycle and authorized entry points for the future generator UI."""
 
 from .jobs import JobCoordinator
-from .operations import add_cards_in_background, recover_in_background
+from .operations import add_cards_in_background, recover_in_background, repair_type_in_background
 from .storage import ProfileStore, job_tag
 from .validation import ValidationError
 
@@ -16,6 +16,8 @@ class ApplicationRuntime:
         self.recovered = {}
         self.outcome = None
         self.error = None
+        self.failure_action = None
+        self.repairing = False
         self._epoch = 0
 
     def open_profile(self, profile, collection):
@@ -34,6 +36,7 @@ class ApplicationRuntime:
             if epoch == self._epoch:
                 self.ready = False
                 self.error = "Previous jobs could not be recovered. Reopen the profile to retry."
+                self.failure_action = "reopen-profile"
 
         return recover_in_background(self.parent, collection, coordinator=self.coordinator,
                                      store=self.store, profile=profile,
@@ -48,23 +51,28 @@ class ApplicationRuntime:
         self.recovered = {}
         self.outcome = None
         self.error = None
+        self.failure_action = None
+        self.repairing = False
 
     def start_job(self, request, settings):
-        if not self.ready:
+        if not self.ready or self.repairing:
             raise ValidationError("Wait for previous jobs to be reconciled before generating")
         if any(item["state"] == "uncertain" for item in self.recovered.values()):
             raise ValidationError("A previous job needs inspection before generating")
         if any(item["state"] in {"pending", "uncertain"} for item in self.store.jobs()):
             raise ValidationError("A previous commit must be reconciled before generating")
+        self.store.prune_history()
         job = self.coordinator.start(self.profile, request, settings)
         self.outcome = None
+        self.error = self.failure_action = None
         return job
 
     def add_cards(self, request, result, on_complete=None):
-        if not self.ready:
+        if not self.ready or self.repairing:
             raise ValidationError("Job recovery must finish before insertion")
         epoch = self._epoch
-        saved = self.store.job(request["requestId"])
+        request_id = request["requestId"]
+        saved = self.store.job(request_id)
         if saved is None:
             self.coordinator.begin_validation(self.profile, request["requestId"])
 
@@ -74,14 +82,71 @@ class ApplicationRuntime:
                 if on_complete:
                     on_complete(completed)
 
+        def failure(error, stage="Adding cards"):
+            if epoch == self._epoch:
+                from .cards import NoteTypeRepairRequired
+                record = self.store.job(request_id)
+                if record and record["state"] == "committed":
+                    self.outcome = record.get("outcome")
+                    self.error = self.failure_action = None
+                    return
+                job = self.coordinator.snapshot(self.profile)
+                if job and job["request"]["requestId"] == request_id:
+                    if job["state"] in {"generating", "validating"}:
+                        self.coordinator.fail(self.profile, request_id)
+                    elif job["state"] == "adding":
+                        self.coordinator.finish(self.profile, request_id, success=False)
+                if record and record["state"] in {"pending", "uncertain"}:
+                    self.error = "Adding cards could not be confirmed. Reopen the profile to inspect the saved job."
+                    self.failure_action = "reopen-profile"
+                else:
+                    reason = str(error) if isinstance(error, ValidationError) else "The operation failed."
+                    self.error = f"{stage} failed: {reason}"
+                    self.failure_action = "repair-note-type" if isinstance(error, NoteTypeRepairRequired) else "retry"
+
+        try:
+            return add_cards_in_background(self.parent, self.collection, request, result,
+                                           coordinator=self.coordinator, store=self.store,
+                                           profile=self.profile, on_complete=complete, on_failure=failure)
+        except Exception as error:
+            failure(error, "Validating cards")
+            raise
+
+    def acknowledge_job(self, request_id):
+        if not self.ready or self.store is None:
+            raise ValidationError("Job recovery must finish before acknowledgment")
+        self.store.acknowledge(request_id)
+        self.recovered.pop(request_id, None)
+
+    def repair_note_type(self):
+        if not self.ready or self.repairing or self.store is None:
+            raise ValidationError("Wait for recovery or repair to finish")
+        job = self.coordinator.snapshot(self.profile)
+        if job and job["state"] in {"generating", "validating", "adding"}:
+            raise ValidationError("Wait for the current job to finish")
+        if any(item["state"] in {"pending", "uncertain"} for item in self.store.jobs()):
+            raise ValidationError("Inspect unresolved jobs before repairing")
+        epoch = self._epoch
+        self.repairing = True
+
+        def complete():
+            if epoch == self._epoch:
+                self.repairing = False
+                self.error = self.failure_action = None
+
         def failure(_error):
             if epoch == self._epoch:
-                self.ready = False
-                self.error = "The job could not finish. Reopen the profile to check its saved result."
+                self.repairing = False
+                self.error = "Note-type repair failed. Retry the repair."
+                self.failure_action = "repair-note-type"
 
-        return add_cards_in_background(self.parent, self.collection, request, result,
-                                       coordinator=self.coordinator, store=self.store,
-                                       profile=self.profile, on_complete=complete, on_failure=failure)
+        try:
+            return repair_type_in_background(self.parent, self.collection,
+                                             coordinator=self.coordinator, store=self.store,
+                                             profile=self.profile, on_complete=complete, on_failure=failure)
+        except Exception as error:
+            failure(error)
+            raise
 
     def view_cards(self, request_id):
         if not self.ready:
@@ -95,8 +160,16 @@ class ApplicationRuntime:
         return browser
 
     def panel_state(self):
+        recovery_jobs = [item["requestId"] for item in self.store.jobs()
+                         if item["state"] == "uncertain"] if self.store and self.ready else []
+        if recovery_jobs:
+            return {"state": "failed", "message": "Inspect previous jobs, then acknowledge them to enable generation. Acknowledgment deletes no cards.",
+                    "canView": False, "recoveryJobs": recovery_jobs, "action": "inspect"}
         if self.error:
-            return {"state": "failed", "message": self.error, "canView": False}
+            return {"state": "failed", "message": self.error, "canView": False,
+                    "action": self.failure_action}
+        if self.repairing:
+            return {"state": "repairing", "message": "Creating a replacement note type…", "canView": False}
         if self.profile is None:
             return {"state": "ready", "message": "Ready", "canView": False}
         if not self.ready:

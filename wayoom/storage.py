@@ -63,7 +63,7 @@ class ProfileStore:
     @staticmethod
     def _check_settings(value):
         if type(value) is not dict or set(value) - {
-            "panelVisible", "notetypeId", "activeProviderId", "setupComplete", "providers"
+            "panelVisible", "notetypeId", "ownedNotetypeIds", "activeProviderId", "setupComplete", "providers"
         }:
             raise ValidationError("Unsupported settings fields")
         for key in ("panelVisible", "setupComplete"):
@@ -71,6 +71,9 @@ class ProfileStore:
                 raise ValidationError("Invalid settings flag")
         if "notetypeId" in value and (type(value["notetypeId"]) is not int or value["notetypeId"] <= 0):
             raise ValidationError("Invalid stored note-type ID")
+        if "ownedNotetypeIds" in value and (type(value["ownedNotetypeIds"]) is not list
+                or any(type(item) is not int or item <= 0 for item in value["ownedNotetypeIds"])):
+            raise ValidationError("Invalid owned note-type IDs")
         if ("activeProviderId" in value and value["activeProviderId"] is not None
                 and (type(value["activeProviderId"]) is not str or value["activeProviderId"] not in PROVIDERS)):
             raise ValidationError("Invalid stored provider")
@@ -120,7 +123,7 @@ class ProfileStore:
         return record
 
     def resolve(self, request_id, state, outcome=None):
-        if state not in {"committed", "not_committed", "undone", "uncertain"}:
+        if state not in {"committed", "not_committed", "undone", "uncertain", "acknowledged"}:
             raise ValidationError("Invalid commit state")
         if outcome is not None and (type(outcome) is not dict or set(outcome) - {
             "requestId", "count", "deckId", "deckName", "notetypeId", "noteIds", "cardIds", "jobTag"
@@ -134,6 +137,23 @@ class ProfileStore:
             if outcome is not None:
                 value["outcome"] = deepcopy(outcome)
             self._write(self._job_path(request_id), value)
+
+    def acknowledge(self, request_id):
+        """Resolve a user's inspection without touching any collection data."""
+        with _LOCK:
+            record = self.job(request_id)
+            if record is None or record["state"] != "uncertain":
+                raise ValidationError("Only uncertain jobs can be acknowledged")
+            self.resolve(request_id, "acknowledged")
+
+    def prune_history(self, keep=100):
+        """Bound terminal history; unresolved commit evidence is never removed."""
+        with _LOCK:
+            paths = [self._job_path(record["requestId"]) for record in self.jobs()
+                     if record["state"] not in {"pending", "uncertain"}]
+            paths.sort(key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True)
+            for path in paths[keep:]:
+                path.unlink()
 
     def record_artifacts(self, request_id, *, deck_id=None, notetype_id=None,
                          deck_name=None, notetype_fingerprint=None):

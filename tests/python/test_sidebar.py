@@ -109,3 +109,23 @@ class SidebarTests(unittest.TestCase):
             view.assert_not_called()
             self.addon.panel_command(self.addon.sidebar.widget(), "wayoom:v1:view-cards")
             view.assert_called_once_with("job-1")
+
+    def test_recovery_and_repair_commands_are_scoped_to_live_panel(self):
+        self.addon.profile_opened()
+        request = {"requestId": "old", "cardCount": 1, "destination": {}, "providerId": "openai"}
+        self.addon.runtime.store.prepare(request)
+        self.addon.runtime.store.resolve("old", "uncertain")
+        with patch.object(self.addon.runtime, "view_cards") as view, \
+                patch.object(self.addon.runtime, "acknowledge_job") as acknowledge, \
+                patch.object(self.addon.runtime, "repair_note_type") as repair:
+            self.addon.panel_command(object(), "wayoom:v1:acknowledge:old")
+            acknowledge.assert_not_called()
+            web = self.addon.sidebar.widget()
+            self.addon.panel_command(web, "wayoom:v1:inspect:unknown")
+            view.assert_not_called()
+            self.addon.panel_command(web, "wayoom:v1:inspect:old")
+            view.assert_called_once_with("old")
+            self.addon.panel_command(web, "wayoom:v1:acknowledge:old")
+            acknowledge.assert_called_once_with("old")
+            self.addon.panel_command(web, "wayoom:v1:repair-note-type")
+            repair.assert_called_once()

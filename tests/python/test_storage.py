@@ -51,3 +51,13 @@ class StorageTests(unittest.TestCase):
         for value in ("../escape", "x y", 'x" or deck:*', "", "x::y"):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 job_tag(value)
+
+    def test_history_pruning_preserves_unresolved_jobs(self):
+        for index in range(105):
+            rid = f"job-{index:03}"
+            self.store.prepare({"requestId": rid, "cardCount": 1, "destination": {}, "providerId": "openai"})
+            self.store.resolve(rid, "committed")
+        self.store.prepare({"requestId": "pending", "cardCount": 1, "destination": {}, "providerId": "openai"})
+        self.store.prune_history()
+        self.assertEqual(len(self.store.jobs()), 101)
+        self.assertEqual(self.store.job("pending")["state"], "pending")

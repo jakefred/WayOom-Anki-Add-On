@@ -21,6 +21,10 @@ QUESTION_TEMPLATE = "{{Front}}"
 ANSWER_TEMPLATE = '{{FrontSide}}\n\n<hr id="answer">\n\n{{Back}}'
 
 
+class NoteTypeRepairRequired(ValidationError):
+    pass
+
+
 def create_basic_notetype(col):
     """Provision an owned type; the caller must retain the returned stable ID."""
     model = col.models.new("WayOom Basic")
@@ -39,13 +43,13 @@ def _require_basic_type(col, notetype_id):
         raise ValidationError("Invalid note-type ID")
     model = col.models.get(NotetypeId(notetype_id))
     if model is None or model["type"] != MODEL_STD:
-        raise ValidationError("A Basic WayOom note type is required")
+        raise NoteTypeRepairRequired("A Basic WayOom note type is required")
     if [field["name"] for field in model["flds"]] != ["Front", "Back"] or len(model["tmpls"]) != 1:
-        raise ValidationError("The WayOom fields or card templates were modified; repair the note type")
+        raise NoteTypeRepairRequired("The WayOom fields or card templates were modified; repair the note type")
     template = model["tmpls"][0]
     if (template["qfmt"] != QUESTION_TEMPLATE or template["afmt"] != ANSWER_TEMPLATE
             or template.get("did")):
-        raise ValidationError("The WayOom card template was modified; repair the note type")
+        raise NoteTypeRepairRequired("The WayOom card template was modified; repair the note type")
     return model
 
 
@@ -53,7 +57,7 @@ def _as_html(value):
     return escape(value.replace("\r\n", "\n").replace("\r", "\n")).replace("\n", "<br>")
 
 
-def insert_basic_cards(col, request, result, notetype_id, *, _rollback=True):
+def insert_basic_cards(col, request, result, notetype_id, *, _rollback=True, owned_notetype_ids=()):
     request = validate_request(request)
     result = validate_generation(request, result)
     if request["destination"]["mode"] != "existing":
@@ -65,12 +69,7 @@ def insert_basic_cards(col, request, result, notetype_id, *, _rollback=True):
         raise ValidationError("Destination must be an existing normal deck")
     model = _require_basic_type(col, notetype_id)
 
-    existing = set()
-    for nid in col.find_notes(f"mid:{notetype_id}"):
-        note = col.get_note(nid)
-        if any(card.did == deck_id for card in note.cards()):
-            front = unescape(re.sub(r"<br\s*/?>", "\n", note["Front"], flags=re.I))
-            existing.add(question_key(front))
+    existing = {question_key(front) for front in generated_fronts(col, deck_id, notetype_id, owned_notetype_ids)}
     if any(question_key(card["front"]) in existing for card in result["cards"]):
         raise ValidationError("A question already exists in the destination deck")
 
@@ -96,6 +95,41 @@ def insert_basic_cards(col, request, result, notetype_id, *, _rollback=True):
             col.undo()
         raise
     return changes
+
+
+def generated_fronts(col, deck_id, notetype_id=None, owned_notetype_ids=()):
+    """Include earlier owned types after repair and filtered cards' home decks."""
+    ids = set(col.find_notes("tag:wayoom"))
+    for mid in set(owned_notetype_ids) | ({notetype_id} if notetype_id else set()):
+        ids.update(col.find_notes(f"mid:{mid}"))
+    fronts = []
+    for nid in sorted(ids, reverse=True):
+        note = col.get_note(nid)
+        if any((card.odid or card.did) == deck_id for card in note.cards()):
+            if note.fields:
+                # Prefer the named field after reordering; use the original
+                # first field if a user renamed Front in an earlier owned type.
+                front = note["Front"] if "Front" in note else note.fields[0]
+                fronts.append(unescape(re.sub(r"<br\s*/?>", "\n", front, flags=re.I)))
+    return fronts
+
+
+def repair_basic_notetype(col, store):
+    """Create a replacement without editing existing notes or customized types."""
+    settings = store.settings()
+    current = settings.get("notetypeId")
+    if current is not None:
+        try:
+            _require_basic_type(col, current)
+            return current
+        except NoteTypeRepairRequired:
+            pass
+    notetype_id = create_basic_notetype(col)
+    owned = set(settings.get("ownedNotetypeIds", [])) | {notetype_id}
+    if current:
+        owned.add(current)
+    store.update_settings(notetypeId=notetype_id, ownedNotetypeIds=sorted(owned))
+    return notetype_id
 
 
 def list_destinations(col):
@@ -148,6 +182,8 @@ def reconcile_job(col, store, request_id):
     if record is None:
         return None
     changes = OpChanges()
+    if record["state"] not in {"pending", "uncertain"}:
+        return {"state": record["state"], "outcome": record.get("outcome"), "changes": changes}
     try:
         outcome = _outcome(col, request_id, record["cardCount"])
     except Exception:
@@ -172,8 +208,19 @@ def reconcile_job(col, store, request_id):
 
 
 def reconcile_pending_jobs(col, store):
-    return {record["requestId"]: reconcile_job(col, store, record["requestId"])
-            for record in store.jobs()}
+    recovered = {}
+    for record in store.jobs():
+        if record["state"] not in {"pending", "uncertain"}:
+            continue
+        rid = record["requestId"]
+        try:
+            recovered[rid] = reconcile_job(col, store, rid)
+        except ValidationError:
+            if store.job(rid)["state"] != "uncertain":
+                raise
+            recovered[rid] = {"state": "uncertain", "outcome": None, "changes": OpChanges()}
+    store.prune_history()
+    return recovered
 
 
 def _type_fingerprint(col, notetype_id):
@@ -254,7 +301,8 @@ def commit_generation(col, request, result, store, coordinator, profile):
             resolved_result = {**result, "deckName": None}
         else:
             resolved_request, resolved_result = request, result
-        insert_basic_cards(col, resolved_request, resolved_result, notetype_id, _rollback=False)
+        insert_basic_cards(col, resolved_request, resolved_result, notetype_id, _rollback=False,
+                           owned_notetype_ids=settings.get("ownedNotetypeIds", []))
         outcome = _outcome(col, request["requestId"], request["cardCount"])
         if outcome is None:
             raise ValidationError("Inserted job could not be verified")
