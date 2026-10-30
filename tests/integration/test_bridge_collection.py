@@ -101,3 +101,12 @@ class BridgeCollectionTests(unittest.TestCase):
         response = self.rpc("commit", {"requestId": job["request"]["requestId"], "result": {"deckName": None, "cards": [{"front": "Q", "back": "A"}]}})
         self.assertFalse(response["ok"])
         self.assertEqual(self.col.card_count(), 0)
+
+    def test_duplicate_prefetch_rejects_deleted_or_filtered_destination(self):
+        for deck_id in (987654321, self.col.decks.new_filtered("Unavailable destination")):
+            request = {**self.request, "destination": {"mode": "existing", "deckId": deck_id}}
+            job = self.runtime.start_job(request, {})
+            response = self.rpc("duplicates", {"requestId": job["request"]["requestId"], "fronts": []})
+            self.assertFalse(response["ok"])
+            self.assertEqual(self.col.card_count(), 0)
+            self.runtime.coordinator.fail("fixture", job["request"]["requestId"])

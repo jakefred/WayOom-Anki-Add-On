@@ -6,6 +6,7 @@ from aqt.qt import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout
 from .credentials import CredentialError
 from .settings import DISCLOSURE, PROVIDER_INFO
 from .validation import ValidationError
+from .models import DEFAULT_MODELS
 
 TEST_MESSAGES = {
     "success": "Connection succeeded.", "authentication": "Credentials were rejected.",
@@ -91,7 +92,9 @@ class SettingsDialog(QDialog):
         state = self.controller.summary()
         for provider, row in self.rows.items():
             config = state["providers"].get(provider, {})
-            row["model"].setText(config.get("modelId", ""))
+            row["model"].setText(config.get("modelOverride", ""))
+            default = DEFAULT_MODELS[provider]
+            row["model"].setPlaceholderText(f"Default: {default['modelId']} (live {default['liveStatus']})")
             row["remove"].setChecked(False)
             row["session"].setChecked(config.get("storage") == "session")
             status = "No available key"
@@ -109,7 +112,7 @@ class SettingsDialog(QDialog):
     def test_provider(self, provider):
         row = self.rows[provider]
         saved = self.controller.summary()["providers"].get(provider, {})
-        if row["key"].text() or row["remove"].isChecked() or row["model"].text().strip() != saved.get("modelId", ""):
+        if row["key"].text() or row["remove"].isChecked() or row["model"].text().strip() != saved.get("modelOverride", ""):
             self.message.setText("Save key and model changes before testing.")
             return
         if self._testing or not self.test_connection:

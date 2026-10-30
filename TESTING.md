@@ -2,7 +2,7 @@
 
 ## What these tests establish
 
-The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, and an SDK-to-Python provider bridge. The sidebar opens a runtime that reconciles saved jobs before permitting generation. The generation engine and form are not built yet.
+The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, an SDK-to-Python provider bridge, and a generation engine. The sidebar opens a runtime that reconciles saved jobs before permitting generation. The generation form is still pending.
 
 | Suite | What runs | What it checks |
 | --- | --- | --- |
@@ -66,11 +66,11 @@ globals, without Node globals, through the real JSON-line bridge and Python work
 The in-process provider responses are fixtures, not live model behavior.
 
 The exact AI SDK and provider adapter versions in `package.json` are runtime
-dependencies for the planned generation engine. esbuild is a development dependency
+dependencies for the generation engine. esbuild is a development dependency
 only. Structured generation will use `generateText` with `Output.object`, following
 the [current SDK documentation](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data).
 The SDK boundary requires a supplied fetch and uses only a nonsecret placeholder;
-native connection tests now call through the bridge. Generation orchestration is pending.
+native connection tests and the generation engine call through the bridge.
 
 ## Implementation entry points
 
@@ -79,13 +79,15 @@ native connection tests now call through the bridge. Generation orchestration is
 - `wayoom/cards.py`: discover normal destination decks, provision/verify the owned note type, resolve naming collisions, insert with `col.add_notes()`, and reconcile job tags. Successful commits and recovery retain the stable note-type ID in profile settings.
 - `wayoom/jobs.py`: mint unique job IDs, snapshot provider/model references, enforce one active job per profile, authorize attempts and writes, and abort canceled/expired jobs. The budget is three attempts for each of `ceil(cardCount / 25)` fixed internal batches, plus three attempts for AI naming. The proxy consumes an attempt before transport; connection-test permits are single-use. SDK connection tests explicitly use `maxRetries: 0`.
 - `web/bridge.mjs`, `web/failures.mjs`, `web/connection-test.mjs`: correlated RPC/custom fetch, shared SDK/proxy failure classification, and the structured connection-test call.
+- `web/generation.mjs`, `web/generation-provider.mjs`: sequential generation, in-memory retry cache, local acceptance/repair, cancellation/deadline, and the separately testable prompt/structured-call boundary.
+- `wayoom/default_models.json`, `wayoom/models.py`: the single defaults table, documentation sources, and effective-model resolution. Every default is explicitly live-untested; an override is optional.
 - `wayoom/bridge.py`, `wayoom/proxy.py`, `wayoom/provider_routes.json`: profile-bound RPC authorization, native-issued test permits, worker-thread HTTPS, generic credential injection/redaction, and route data.
 - `wayoom/storage.py`: atomically replace allowlisted profile settings and job records under `user_files`, using hashed profile directory names. Never pass actual credentials into the model/credential-reference fields. Topics and card bodies are omitted from pending-job records.
 - `wayoom/runtime.py`: open/close profile sessions, block generation until recovery completes, schedule authorized writes, and open Anki's browser using the saved job tag.
 - `wayoom/operations.py`: queue authorized insertion and recovery through `CollectionOp`, bind them to the captured collection, and snapshot input data. Insertion requires a coordinator, profile, and store; it has no unauthenticated legacy entry point.
 - `tests/fixtures/validation.json`: shared acceptance/rejection cases for both validators.
 
-Both validators repair AI-generated deck titles such as `Biology::Cells` to `Biology — Cells` before final name validation. Shared fixtures check the repaired output, repeated separators, single-colon preservation, and control-character rejection. User-supplied hierarchy separators remain invalid. The JavaScript naming-result schema also accepts a standalone `{deckName}` response. The Python coordinator requires a validated naming result before authorizing card calls and binds that title to insertion. The dedicated provider call itself is not implemented yet.
+Both validators repair AI-generated deck titles such as `Biology::Cells` to `Biology — Cells` before final name validation. Shared fixtures check the repaired output, repeated separators, single-colon preservation, and control-character rejection. User-supplied hierarchy separators remain invalid. The JavaScript naming-result schema accepts a standalone `{deckName}` response. The engine makes a dedicated naming call when needed; the Python coordinator requires and retains its validated result before authorizing card calls and binds that title to insertion.
 
 Call collection-writing functions only through Anki's serialized operation mechanism. The integration tests call them directly because each test exclusively owns its temporary collection.
 
@@ -116,7 +118,8 @@ completion report the saved success. Validation can return to provider calls wit
 the original budgets; insertion remains guarded against canceled or stale jobs.
 An unchanged failed job retains its AI-generated title for a new ID, with no naming
 call. Cancel, profile close, changed inputs, or changed model/credential references
-discard that title. Generation and retained-card retry orchestration remain future work.
+discard that title. The generation engine now orchestrates retained-card retries
+under a Python-issued `retryOf` proof and profile-session identity.
 
 Duplicate checks include filtered cards whose home deck is the target and earlier
 owned note types after repair. Repair creates a new owned type and updates the saved
@@ -139,9 +142,11 @@ First-run setup and Settings are native modal Qt dialogs, with masked blank key
 inputs, status labels, provider selection, model overrides, remove controls,
 billing/privacy/storage disclosures, and provider key-management links. Saving
 a key marks it untested. Connection-test buttons require an available saved key
-and a saved model ID. Model defaults are assigned in milestone 4; for now a model
-must be supplied before testing. The Qt action issues a single-use permit and asks
+and an effective model ID from an override or the defaults table. The Qt action issues a single-use permit and asks
 the webview SDK to make the call. Unsaved key/model changes must be saved first.
+Verification is bound to `verifiedModelId`, so changing a default does not label
+an untested model as verified. Native model inputs remain blank for the default
+and show its ID in the placeholder, labeled live-untested.
 Saving changes across several providers is sequential; after a partial failure,
 the dialog clears key inputs, refreshes saved status, and reports that some changes
 may already have been saved. Cancel discards unsaved input. Only one settings
@@ -161,7 +166,8 @@ The generation bridge must use `ApplicationRuntime.start_configured_job()` to
 snapshot the selected provider/reference from Python. Settings mutations are
 blocked while a job is running, preserving its credential choice. Existing core
 tests still call the lower-level `start_job()` with explicit nonsecret references.
-The generation-start form and its bridge action are not built yet. The existing
+The generation-start form is not built yet. The engine's start bridge action calls
+this configured entry point and receives the Python snapshot. The existing
 commit bridge action accepts only a current job ID and result, and obtains the
 request snapshot from Python. It never accepts a JavaScript request for insertion.
 
@@ -184,8 +190,9 @@ Uninstalling the add-on alone may leave keys in the OS credential store.
 RPC uses the `wayoom:v1:rpc:` prefix with `{v,id,op,payload}` envelopes. Responses
 are correlated by ID; repeat IDs in the bounded replay window do not send another
 call. Only the current WayOom webview can dispatch commands. Supported operations
-are ready, fetch, abort, test-result, naming-complete, validating, duplicates, and
-commit. A connection-test permit can only be minted by the native Qt action.
+are ready, start, cancel-start, progress, fail, discard-retained, job-status,
+fetch, abort, test-result, naming-complete, validating, duplicates, and commit.
+A connection-test permit can only be minted by the native Qt action.
 Read-only duplicate checks use QueryOp and inspect the complete target deck;
 the returned 200-front prompt hint does not limit conflict detection. Real Anki
 tests cover full case folding, filtered home decks, old fronts outside the hint,
@@ -248,12 +255,87 @@ HTTPS routes to local HTTP; production has no insecure transport switch. It send
 19 fake HTTP requests, with one extra simulated network failure before sending.
 It does not test TLS, real provider behavior, Qt, or a real credential store.
 
+## Generation engine and retained retries
+
+The browser bundle exposes `window.wayoomGeneration`, an instance of
+`GenerationEngine`. Milestone 5's form will call `run(request)`, `cancel()`, and
+`discard()` on input changes. The engine already handles Python owner-ended and
+profile-closed events. It validates the request locally before starting, and
+Python independently validates the request, selects the active provider/effective
+model/credential reference, and mints its job ID. A start token makes replay
+idempotent and allows cancellation before the start response arrives; a canceled
+token cannot later create an orphaned job.
+
+Naming runs first, only for a blank new-deck name, with at most three attempts.
+Cards use sequential original batches of at most 25 and at most three attempts
+each. SDK automatic retries are disabled. The provider wire schemas contain only
+simple object/array/string shapes. Counts, lengths, Unicode, syntax, strict fields,
+and final assembly are enforced locally with the existing Zod validators, then
+independently at the Python commit boundary. No validator acceptance rules were
+changed in milestone 4.
+
+Each attempt includes the normalized topic, requested missing count, difficulty
+learning task, topic-language rule, all accepted fronts, and up to 200 target-deck
+fronts. Python's complete-deck/full-fold duplicate check remains authoritative.
+Existing normal-deck availability is checked during prefetch, before card calls.
+Valid siblings from short/partly invalid responses are retained; the repair asks
+only for missing cards. Bounded JSON in an SDK NoObjectGeneratedError may be parsed
+to salvage valid siblings, each still subject to strict local validation. Malformed
+JSON is never evaluated as code. Excess responses are rejected in full and repaired,
+never truncated. Conflicts discovered in an earlier batch consume only that
+original batch's remaining attempts, without resetting budgets.
+
+Network, provider, malformed-output, per-call timeout, and size failures may consume
+the remaining bounded attempts. Authentication, missing credentials, model, quota,
+rate-limit, refusal, redirect, and authorization failures stop immediately. Failures
+report a fixed category, stage, retained count, and exhaustion flag without returning
+SDK exception text or output bodies. Python receives only allowlisted categories
+and bounded stage/progress values. Drafts remain in webview memory only; titles
+remain Python-owned. The ten-minute deadline covers generation and validation;
+once commit is dispatched, insertion finishes through the authorized atomic path.
+Late provider results are ignored even when a test caller ignores AbortSignal.
+
+Unchanged definitive-failure retries get a new ID and a Python `retryOf` proof only
+when session, normalized request, provider, model, and credential reference match.
+The engine rechecks retained fronts against the full deck and fills only the missing
+cards in their original batches. Cancel, profile close, changed inputs (via discard),
+or changed settings invalidate reuse. An uncertain commit clears the retry cache
+and requires reconciliation. A lost commit response can recover the durable saved
+success through job-status without reinserting.
+
+The model IDs and source links live only in
+[default_models.json](wayoom/default_models.json). They were selected from current
+primary provider docs and remain **untested live**. The engine uses no silent
+provider/model fallback. The real model IDs are exercised only against fake replies;
+that proves adapter/bridge construction, not provider availability, answer quality,
+or live compatibility.
+
+`tests/js/generation.test.mjs` asserts exact calls for 1/100 cards, dedicated and
+retained naming, supplied names, malformed/empty/short/excess/oversized output,
+invalid siblings, Unicode duplicates, complete-deck conflicts beyond the hint,
+batch-spanning avoidance, exhausted budgets, partial retry, input/profile changes,
+late start/response cancellation, deadline, terminal errors, and uncertain/durable
+commit recovery. Its fake duplicate authority is a test double; separate real Anki
+tests establish Python's full Unicode behavior.
+
+`tests/js/generation-integration.test.mjs` uses the built browser-only bundle,
+all five real SDK adapters, the actual Python bridge/coordinator/proxy, and a
+disposable real Anki backend. GUI scheduling and provider replies are doubled;
+socket creation is blocked. Each provider inserts exactly 100 cards with one
+naming call and four card calls. Additional scenarios insert one card into a
+supplied-name deck, salvage an invalid sibling, and prove that a failure after
+25 drafts creates no deck/cards before retry generates only 75 missing cards.
+The scenario inserts 603 cards in total, then closes/removes its disposable
+collection. JSON-line test pipes explicitly use UTF-8 so names round-trip correctly
+on Windows. No real keys, real credential stores, real Qt windows, or real providers
+are used.
+
 ## Coverage limits and remaining work
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
 
 - Provider API calls, SDK model compatibility, real credential stores and native onboarding behavior, and live transport retry/cancellation behavior.
-- The dedicated AI naming call and generation orchestration (local title repair, naming-before-cards authorization, and new-deck insertion are tested).
+- User-driven form/Retry controls and real-model naming, generation, repair behavior, relevance, and difficulty quality.
 - Real provider compatibility, real Qt rendering, and user-driven review sessions. The commit bridge is authorized and tested; a working generation form is still pending.
 - Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM, with DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations and setup/settings dialog logic still require real-platform verification.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.

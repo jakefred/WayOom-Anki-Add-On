@@ -56,6 +56,7 @@ class SettingsController:
                     else:
                         config.pop("modelId", None)
                     config["connectionStatus"] = "untested"
+                    config.pop("verifiedModelId", None)
                     self.store.update_settings(providers=settings["providers"])
         state = self.summary()
         available = [provider for provider, config in state["providers"].items() if config["available"]]

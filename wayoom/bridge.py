@@ -9,9 +9,10 @@ from uuid import uuid4
 from .jobs import ConnectionTestPermit
 from .proxy import MAX_REQUEST, ProviderProxy, ProxyError, Transfer, validate_http
 from .validation import ValidationError
+from .models import model_id
 
 CATEGORIES = {"success", "authentication", "credentials", "model", "quota", "rate-limit", "timeout", "network",
-              "refusal", "malformed", "refused", "canceled", "redirect", "oversized", "provider"}
+              "refusal", "malformed", "refused", "canceled", "redirect", "oversized", "provider", "validation"}
 
 
 class Bridge:
@@ -29,6 +30,8 @@ class Bridge:
         self._closed = False
         self.client_ready = False
         self._ended = None
+        self._start = None
+        self._canceled_starts = deque(maxlen=256)
 
     def emit(self, message):
         # There is no raw provider error, credential, or outgoing header in these messages.
@@ -67,6 +70,44 @@ class Bridge:
             if op == "ready" and not payload:
                 self.client_ready = True
                 self.reply(rpc_id, {})
+            elif op == "start" and set(payload) == {"request", "startToken"}:
+                token = payload["startToken"]
+                if not self._valid_token(token) or token in self._canceled_starts or self.testing:
+                    raise ProxyError("refused")
+                if self._start and self._start[0] == token:
+                    job = self.runtime.coordinator.authorized_snapshot(self.profile, self._start[1],
+                                                                       ("generating", "validating", "adding", "complete", "failed", "canceled"))
+                else:
+                    job = self.runtime.start_configured_job(payload["request"])
+                    self._start = (token, job["request"]["requestId"])
+                self.reply(rpc_id, job)
+            elif op == "cancel-start" and set(payload) == {"startToken"}:
+                token = payload["startToken"]
+                if not self._valid_token(token):
+                    raise ProxyError("refused")
+                self._canceled_starts.append(token)
+                if self._start and self._start[0] == token:
+                    job = self.runtime.coordinator.snapshot(self.profile)
+                    if job and job["request"]["requestId"] == self._start[1] and job["state"] in {"generating", "validating"}:
+                        self.runtime.coordinator.cancel(self.profile, self._start[1])
+                self.reply(rpc_id, {})
+            elif op == "progress" and set(payload) == {"requestId", "stage", "batch", "acceptedCount"}:
+                self.runtime.coordinator.progress(self.profile, payload["requestId"], payload["stage"], payload["batch"], payload["acceptedCount"])
+                self.reply(rpc_id, {})
+            elif op == "fail" and set(payload) == {"requestId", "category", "stage"}:
+                if payload["category"] not in CATEGORIES - {"success", "canceled"} or payload["stage"] not in {"naming", "cards", "validating", "starting"}:
+                    raise ProxyError("refused")
+                self.runtime.fail_generation(payload["requestId"], payload["category"], payload["stage"])
+                self.reply(rpc_id, {})
+            elif op == "discard-retained" and set(payload) == {"requestId"}:
+                self.runtime.coordinator.discard_retained(self.profile, payload["requestId"])
+                self.reply(rpc_id, {})
+            elif op == "job-status" and set(payload) == {"requestId"}:
+                job = self.runtime.coordinator.authorized_snapshot(self.profile, payload["requestId"],
+                                                                  ("generating", "validating", "adding", "complete", "failed", "canceled"))
+                record = self.store.job(payload["requestId"])
+                self.reply(rpc_id, {"state": job["state"], "commitState": record["state"] if record else None,
+                                    "outcome": record.get("outcome") if record else None})
             elif op == "fetch":
                 self._fetch(rpc_id, payload)
             elif op == "abort" and set(payload) == {"id"}:
@@ -158,6 +199,10 @@ class Bridge:
         except Exception:
             self.cancel(rpc_id, "network")
 
+    @staticmethod
+    def _valid_token(token):
+        return type(token) is str and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", token) is not None
+
     def cancel(self, rpc_id, category):
         with self._lock:
             pending = self._pending.pop(rpc_id, None)
@@ -173,13 +218,14 @@ class Bridge:
             raise ValidationError("Wait for the current connection test to finish")
         self.runtime.settings_guard()
         config = self.store.settings().get("providers", {}).get(provider, {})
-        if not config.get("credentialRef") or not config.get("modelId"):
-            raise ValidationError("Save a key and model ID before testing")
+        if not config.get("credentialRef"):
+            raise ValidationError("Save a key before testing")
         owner = uuid4().hex
-        self._tests[owner] = {"provider": provider, "settings": dict(config), "callback": callback,
+        settings = {**config, "modelId": model_id(provider, config)}
+        self._tests[owner] = {"provider": provider, "settings": settings, "savedConfig": dict(config), "callback": callback,
                               "permit": ConnectionTestPermit(), "deadline": self.clock() + 30, "httpSuccess": False}
         self.emit({"v": 1, "event": "connection-test", "owner": owner,
-                   "providerId": provider, "modelId": config["modelId"]})
+                   "providerId": provider, "modelId": settings["modelId"]})
         return owner
 
     def _test_result(self, owner, category):
@@ -193,9 +239,13 @@ class Bridge:
             if pending["owner"] == owner:
                 self.cancel(rpc_id, "canceled")
         config = self.store.settings().get("providers", {}).get(test["provider"], {})
-        if config == test["settings"] and category in {"success", "authentication", "model"}:
+        if config == test["savedConfig"] and category in {"success", "authentication", "model"}:
             providers = self.store.settings()["providers"]
             providers[test["provider"]]["connectionStatus"] = "verified" if category == "success" else "untested"
+            if category == "success":
+                providers[test["provider"]]["verifiedModelId"] = test["settings"]["modelId"]
+            else:
+                providers[test["provider"]].pop("verifiedModelId", None)
             self.store.update_settings(providers=providers)
         test["callback"](category)
 

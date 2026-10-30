@@ -2,15 +2,21 @@ export { createProviderModel, generateText, Output, jsonSchema } from './sdk.mjs
 export { BridgeClient } from './bridge.mjs';
 export { classifyFailure } from './failures.mjs';
 export { runConnectionTest } from './connection-test.mjs';
+export { GenerationEngine } from './generation.mjs';
+export { generationPrompt, cardsWireSchema, namingWireSchema } from './generation-provider.mjs';
 import { BridgeClient } from './bridge.mjs';
 import { runConnectionTest } from './connection-test.mjs';
+import { GenerationEngine } from './generation.mjs';
 
 const client = new BridgeClient(command => pycmd(command), {
   onEvent: event => {
     if (event.event === 'connection-test') runConnectionTest(client, event).catch(() => {});
+    else engine.handleEvent(event);
   },
 });
 window.wayoomBridge = client;
+const engine = new GenerationEngine(client);
+window.wayoomGeneration = engine;
 client.rpc('ready').catch(() => {});
 
 let recoveryKey = '';

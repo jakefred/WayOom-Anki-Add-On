@@ -21,6 +21,11 @@ class _Job:
     name_ready: bool = False
     generated_name: str | None = None
     failure_category: str | None = None
+    retain_name: bool = True
+    retry_of: str | None = None
+    stage: str = "cards"
+    batch: int = 0
+    accepted_count: int = 0
 
 
 class JobCoordinator:
@@ -79,14 +84,17 @@ class JobCoordinator:
             session = self._sessions[profile][0]
             needs_name = request["destination"] == {"mode": "new", "name": None}
             retained_name = None
-            if (prior and prior.state == "failed" and prior.session == session
+            reusable = (prior and prior.state == "failed" and prior.session == session and prior.retain_name
                     and {k: v for k, v in prior.request.items() if k != "requestId"}
                     == {k: v for k, v in request.items() if k != "requestId"}
-                    and prior.settings == settings):
+                    and prior.settings == settings)
+            if reusable:
                 retained_name = prior.generated_name
             self._jobs[profile] = _Job(request, deepcopy(settings), session,
                                       self._clock() + 600, name_ready=not needs_name or retained_name is not None,
-                                      generated_name=retained_name)
+                                      generated_name=retained_name,
+                                      retry_of=prior.request["requestId"] if reusable else None,
+                                      stage="naming" if needs_name and retained_name is None else "cards")
             return self.snapshot(profile)
 
     def _require(self, profile, request_id, states):
@@ -121,7 +129,9 @@ class JobCoordinator:
             return deepcopy({"request": job.request, "settings": job.settings,
                              "state": job.state, "callLimit": limit,
                              "callsUsed": sum(job.calls.values()), "deckName": job.generated_name,
-                             "failureCategory": job.failure_category})
+                             "failureCategory": job.failure_category, "sessionId": job.session,
+                             "retryOf": job.retry_of, "remainingSeconds": max(0, job.deadline - self._clock()),
+                             "stage": job.stage, "batch": job.batch, "acceptedCount": job.accepted_count})
 
     def require_profile(self, profile, collection):
         with self._lock:
@@ -153,6 +163,7 @@ class JobCoordinator:
                 raise ValidationError("Provider attempt limit reached")
             job.calls[key] = job.calls.get(key, 0) + 1
             job.state = "generating"
+            job.stage, job.batch = stage, batch
             return deepcopy(job.settings)
 
     def naming_complete(self, profile, request_id, name):
@@ -207,11 +218,30 @@ class JobCoordinator:
             job.state = "complete" if success else "failed"
             job.failure_category = None if success else "provider"
 
-    def fail(self, profile, request_id):
+    def discard_retained(self, profile, request_id):
+        with self._lock:
+            job = self._jobs.get(profile)
+            if not job or job.request["requestId"] != request_id or profile not in self._sessions:
+                raise ValidationError("Unknown job")
+            job.retain_name = False
+            if job.state in {"failed", "canceled"}:
+                job.generated_name = None
+
+    def progress(self, profile, request_id, stage, batch, accepted_count):
+        with self._lock:
+            job = self._require(profile, request_id, {"generating", "validating"})
+            if (stage not in {"naming", "cards", "validating"} or type(batch) is not int
+                    or not 0 <= batch < (job.request["cardCount"] + 24) // 25
+                    or type(accepted_count) is not int or not 0 <= accepted_count <= job.request["cardCount"]):
+                raise ValidationError("Invalid progress")
+            job.stage, job.batch, job.accepted_count = stage, batch, accepted_count
+            job.state = "validating" if stage == "validating" else "generating"
+
+    def fail(self, profile, request_id, *, category="provider"):
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
             job.state = "failed"
-            job.failure_category = "provider"
+            job.failure_category = category
             aborts, job.aborts = job.aborts, []
         self._abort(aborts)
 

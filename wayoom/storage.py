@@ -81,7 +81,7 @@ class ProfileStore:
         if type(providers) is not dict or set(providers) - PROVIDERS:
             raise ValidationError("Invalid provider settings")
         for provider in providers.values():
-            if type(provider) is not dict or set(provider) - {"credentialRef", "modelId", "connectionStatus"}:
+            if type(provider) is not dict or set(provider) - {"credentialRef", "modelId", "connectionStatus", "verifiedModelId"}:
                 raise ValidationError("Only nonsecret provider references may be saved")
             for key, item in provider.items():
                 if type(item) is not str or not item or len(item) > 256:

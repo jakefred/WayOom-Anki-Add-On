@@ -5,6 +5,7 @@ from .operations import add_cards_in_background, recover_in_background, repair_t
 from .storage import ProfileStore, job_tag
 from .validation import ValidationError
 from .credentials import CredentialService, CredentialError
+from .models import model_id
 
 
 class ApplicationRuntime:
@@ -78,6 +79,7 @@ class ApplicationRuntime:
             raise CredentialError("Setup required: configure an available provider key")
         config = self.store.settings()["providers"][active]
         settings = {key: config[key] for key in ("credentialRef", "modelId") if key in config}
+        settings["modelId"] = model_id(active, config)
         return self.start_job({**request, "providerId": active}, settings)
 
     def start_job(self, request, settings):
@@ -92,6 +94,16 @@ class ApplicationRuntime:
         self.outcome = None
         self.error = self.failure_action = None
         return job
+
+    def fail_generation(self, request_id, category, stage):
+        job = self.coordinator.snapshot(self.profile)
+        if not job or job["request"]["requestId"] != request_id or job["state"] in {"adding", "complete"}:
+            raise ValidationError("Unknown or non-generating job")
+        if job["state"] in {"generating", "validating"}:
+            self.coordinator.fail(self.profile, request_id, category=category)
+        if job["state"] != "canceled":
+            self.error = f"{stage.capitalize()} failed ({category})."
+            self.failure_action = "settings" if category in {"authentication", "credentials", "model", "quota"} else "retry"
 
     def add_cards(self, request, result, on_complete=None, on_failure=None):
         if not self.ready or self.repairing:
@@ -224,5 +236,10 @@ class ApplicationRuntime:
                     "provider": job["request"]["providerId"], "action": "retry"}
         if state == "complete" and self.outcome:
             message = f"Added {self.outcome['count']} cards to {self.outcome['deckName']}"
+        elif state in {"generating", "validating"}:
+            if job["stage"] == "naming":
+                message = "Naming deck"
+            else:
+                message = f"{labels[state]} — batch {job['batch'] + 1} of {(job['request']['cardCount'] + 24) // 25}; {job['acceptedCount']} validated drafts"
         return {"state": state, "message": message, "canView": bool(self.outcome),
                 "provider": job["request"]["providerId"]}

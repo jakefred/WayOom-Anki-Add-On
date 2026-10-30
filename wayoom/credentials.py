@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from .storage import ProfileStore
 from .validation import PROVIDERS, ValidationError
+from .models import DEFAULT_MODELS, model_id
 
 
 class CredentialError(ValidationError):
@@ -123,10 +124,14 @@ class CredentialService:
                         available = bool(self.read(store, provider, reference))
                     except CredentialError:
                         pass
+                effective_model = model_id(provider, config)
+                verified = config.get("connectionStatus") == "verified" and config.get("verifiedModelId") == effective_model
                 providers[provider] = {"available": available,
                                        "storage": "session" if reference and reference.startswith("session:") else "os",
-                                       "connectionStatus": config.get("connectionStatus", "untested"),
-                                       "modelId": config.get("modelId", "")}
+                                       "connectionStatus": "verified" if verified else "untested",
+                                       "modelId": effective_model, "modelOverride": config.get("modelId", ""),
+                                       "defaultModelId": DEFAULT_MODELS[provider]["modelId"],
+                                       "defaultLiveStatus": DEFAULT_MODELS[provider]["liveStatus"]}
             available = [provider for provider, value in providers.items() if value["available"]]
             active = settings.get("activeProviderId")
             if len(providers) == 1 and len(available) == 1:

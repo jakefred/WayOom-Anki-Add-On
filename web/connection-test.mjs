@@ -7,7 +7,7 @@ export async function runConnectionTest(client, event) {
     const model = createProviderModel(event.providerId, event.modelId,
       client.fetch({ owner: event.owner, kind: 'test', stage: 'test', batch: 0 }));
     const result = await generateText({
-      model, maxRetries: 0, maxOutputTokens: 128,
+      model, maxRetries: 0, maxOutputTokens: 1024,
       prompt: 'Reply with the JSON object {"ok":true}. This is a connection test.',
       output: Output.object({ schema: jsonSchema({ type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false }) }),
     });

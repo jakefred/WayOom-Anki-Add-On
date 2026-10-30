@@ -12,6 +12,8 @@ export const failureMessages = Object.freeze({
   refused: 'WayOom refused an unauthorized or unsupported request.',
   canceled: 'The request was canceled.', redirect: 'The provider returned a redirect; WayOom did not follow it.',
   oversized: 'The provider request or response exceeded the size limit.', provider: 'The provider request failed.',
+  validation: 'Check the generation inputs before trying again.',
+  uncertain: 'The commit could not be confirmed. Reopen the profile to inspect its saved result.',
 });
 
 export function classifyFailure(error) {

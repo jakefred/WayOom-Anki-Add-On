@@ -77,12 +77,17 @@ def check_fronts_in_background(parent, expected_collection, *, coordinator, stor
     from aqt.operations import QueryOp
     from .cards import generated_fronts
     from .validation import question_key
+    from anki.decks import DeckId
 
     def check(col):
         if col is not expected_collection:
             raise ValidationError("The active Anki profile changed")
         coordinator.require_profile(profile, col)
         coordinator.authorized_snapshot(profile, request["requestId"])
+        if request["destination"]["mode"] == "existing":
+            deck = col.decks.get(DeckId(request["destination"]["deckId"]), default=False)
+            if deck is None or deck.get("dyn"):
+                raise ValidationError("Destination must be an existing normal deck")
         settings = store.settings()
         existing = generated_fronts(col, request["destination"]["deckId"], settings.get("notetypeId"),
                                     settings.get("ownedNotetypeIds", [])) if request["destination"]["mode"] == "existing" else []

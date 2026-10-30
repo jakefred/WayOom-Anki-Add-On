@@ -1,0 +1,7 @@
+{
+  "openai": {"modelId": "gpt-5-mini", "liveStatus": "untested", "checkedOn": "2026-10-30", "source": "https://developers.openai.com/api/docs/models/gpt-5-mini"},
+  "anthropic": {"modelId": "claude-haiku-5-5", "liveStatus": "untested", "checkedOn": "2026-10-30", "source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview", "structuredOutputSource": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs"},
+  "google": {"modelId": "gemini-3.5-flash-lite", "liveStatus": "untested", "checkedOn": "2026-10-30", "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite", "structuredOutputSource": "https://ai.google.dev/gemini-api/docs/structured-output"},
+  "xai": {"modelId": "grok-4.7", "liveStatus": "untested", "checkedOn": "2026-10-30", "source": "https://docs.x.ai/developers/models", "structuredOutputSource": "https://docs.x.ai/developers/model-capabilities/text/structured-outputs"},
+  "mistral": {"modelId": "mistral-small-2603", "liveStatus": "untested", "checkedOn": "2026-10-30", "source": "https://docs.mistral.ai/models/mistral-small-4-0-26-03", "structuredOutputSource": "https://docs.mistral.ai/capabilities/structured_output"}
+}
