@@ -1,7 +1,8 @@
 // Use generateText({ output: Output.object({ schema }), maxRetries: 0 })
 // for structured calls (https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data).
-// Transport and job authorization are added in milestone 3. This boundary
-// never reads environment credentials or uses a provider's default fetch.
+// Transport is supplied by the profile-bound bridge. This boundary never
+// reads environment credentials or uses a provider's default fetch.
+globalThis.AI_SDK_LOG_WARNINGS = false;
 export { generateText, Output, jsonSchema } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';

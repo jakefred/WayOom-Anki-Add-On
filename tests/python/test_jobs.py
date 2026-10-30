@@ -89,6 +89,7 @@ class JobTests(unittest.TestCase):
         self.now = 700
         self.jobs.finish("a", rid, success=True)
         self.assertEqual(self.jobs.snapshot("a")["state"], "complete")
+        self.assertEqual(self.jobs.authorized_snapshot("a", rid, ("complete",))["state"], "complete")
 
     def test_concurrent_reservations_cannot_exceed_three(self):
         rid = self.start()

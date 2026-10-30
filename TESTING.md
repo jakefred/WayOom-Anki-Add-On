@@ -2,7 +2,7 @@
 
 ## What these tests establish
 
-The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, and sidebar lifecycle modules. The sidebar opens a runtime that reconciles saved jobs before permitting generation. A generation form and AI provider transport are not yet connected.
+The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, and an SDK-to-Python provider bridge. The sidebar opens a runtime that reconciles saved jobs before permitting generation. The generation engine and form are not built yet.
 
 | Suite | What runs | What it checks |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ npm test
 
 Alternatively, activate the virtual environment and use `npm run test:python` and `npm run test:anki`. The integration suite also needs Node and the installed Zod dependency for the cross-language round trip. Missing dependencies fail the suite rather than silently skip integration coverage.
 
-The tests require no API keys, provider account, open Anki window, or real user profile. They make no AI requests. Integration collections live under `.test-tmp/anki-test-*` and are closed and removed after each test. An interrupted process can leave a temporary directory there; never point these tests at a personal collection.
+The default tests require no API keys, provider account, open Anki window, or real user profile, and make no network calls. The SDK spike uses fake credentials in Python and an in-process fake provider with socket creation explicitly blocked. It needs Python on PATH or `WAYOOM_TEST_PYTHON` set; it prefers the local `.venv` interpreter when available. Integration collections live under `.test-tmp/anki-test-*` and are closed and removed after each test. An interrupted process can leave a temporary directory there; never point these tests at a personal collection.
 
 `npm test` also builds the self-contained browser bundle with esbuild. The generated
 `web/dist/panel.js` is ignored by Git and served through Anki's add-on web exports;
@@ -61,21 +61,25 @@ will include this generated asset. CI explicitly builds after `npm ci --ignore-s
 The build test loads the bundle in a Node VM with browser globals and a DOM double,
 without Node module globals, initializes all five adapters with a required custom
 fetch, and exercises panel updates and bridge button commands. This proves bundle
-loading under a double, not real Qt rendering or provider transport compatibility.
+loading under a double. A separate SDK spike exercises the bundled SDK with browser
+globals, without Node globals, through the real JSON-line bridge and Python worker.
+The in-process provider responses are fixtures, not live model behavior.
 
 The exact AI SDK and provider adapter versions in `package.json` are runtime
 dependencies for the planned generation engine. esbuild is a development dependency
 only. Structured generation will use `generateText` with `Output.object`, following
 the [current SDK documentation](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data).
 The SDK boundary requires a supplied fetch and uses only a nonsecret placeholder;
-no provider calls are connected yet.
+native connection tests now call through the bridge. Generation orchestration is pending.
 
 ## Implementation entry points
 
 - `web/validation.mjs`: Zod request schema and request-specific result validation. This is a **local** validator; provider adapters will need a JSON-Schema-compatible wire schema without local-only transformations.
 - `wayoom/validation.py`: independent validation at the Python boundary.
 - `wayoom/cards.py`: discover normal destination decks, provision/verify the owned note type, resolve naming collisions, insert with `col.add_notes()`, and reconcile job tags. Successful commits and recovery retain the stable note-type ID in profile settings.
-- `wayoom/jobs.py`: mint unique job IDs, snapshot provider/model references, enforce one active job per profile, authorize attempts and writes, and abort canceled/expired jobs. The budget is three attempts for each of `ceil(cardCount / 25)` fixed internal batches, plus three attempts for AI naming. Connection-test permits are single-use. The future provider proxy must consume an attempt before every transport call; these tests do not establish a working proxy or SDK retry configuration.
+- `wayoom/jobs.py`: mint unique job IDs, snapshot provider/model references, enforce one active job per profile, authorize attempts and writes, and abort canceled/expired jobs. The budget is three attempts for each of `ceil(cardCount / 25)` fixed internal batches, plus three attempts for AI naming. The proxy consumes an attempt before transport; connection-test permits are single-use. SDK connection tests explicitly use `maxRetries: 0`.
+- `web/bridge.mjs`, `web/failures.mjs`, `web/connection-test.mjs`: correlated RPC/custom fetch, shared SDK/proxy failure classification, and the structured connection-test call.
+- `wayoom/bridge.py`, `wayoom/proxy.py`, `wayoom/provider_routes.json`: profile-bound RPC authorization, native-issued test permits, worker-thread HTTPS, generic credential injection/redaction, and route data.
 - `wayoom/storage.py`: atomically replace allowlisted profile settings and job records under `user_files`, using hashed profile directory names. Never pass actual credentials into the model/credential-reference fields. Topics and card bodies are omitted from pending-job records.
 - `wayoom/runtime.py`: open/close profile sessions, block generation until recovery completes, schedule authorized writes, and open Anki's browser using the saved job tag.
 - `wayoom/operations.py`: queue authorized insertion and recovery through `CollectionOp`, bind them to the captured collection, and snapshot input data. Insertion requires a coordinator, profile, and store; it has no unauthenticated legacy entry point.
@@ -134,8 +138,10 @@ platform is still a human verification gate.
 First-run setup and Settings are native modal Qt dialogs, with masked blank key
 inputs, status labels, provider selection, model overrides, remove controls,
 billing/privacy/storage disclosures, and provider key-management links. Saving
-a key marks it untested. The connection-test buttons are disabled until milestone
-3 supplies the SDK bridge path described in the revised implementation plan.
+a key marks it untested. Connection-test buttons require an available saved key
+and a saved model ID. Model defaults are assigned in milestone 4; for now a model
+must be supplied before testing. The Qt action issues a single-use permit and asks
+the webview SDK to make the call. Unsaved key/model changes must be saved first.
 Saving changes across several providers is sequential; after a partial failure,
 the dialog clears key inputs, refreshes saved status, and reports that some changes
 may already have been saved. Cancel discards unsaved input. Only one settings
@@ -155,7 +161,9 @@ The generation bridge must use `ApplicationRuntime.start_configured_job()` to
 snapshot the selected provider/reference from Python. Settings mutations are
 blocked while a job is running, preserving its credential choice. Existing core
 tests still call the lower-level `start_job()` with explicit nonsecret references.
-The form and bridge that will call the configured entry point are not built yet.
+The generation-start form and its bridge action are not built yet. The existing
+commit bridge action accepts only a current job ID and result, and obtains the
+request snapshot from Python. It never accepts a JavaScript request for insertion.
 
 Credential tests use a fake vault and disposable files. They cover save, replace,
 remove, profile/installation isolation, unavailable stores, explicit session opt-in,
@@ -171,14 +179,83 @@ Wait for confirmed success. If removal cannot be confirmed, retry while protecte
 storage is accessible, or revoke the keys through the provider links in Settings.
 Uninstalling the add-on alone may leave keys in the OS credential store.
 
+## Provider bridge and offline SDK proof
+
+RPC uses the `wayoom:v1:rpc:` prefix with `{v,id,op,payload}` envelopes. Responses
+are correlated by ID; repeat IDs in the bounded replay window do not send another
+call. Only the current WayOom webview can dispatch commands. Supported operations
+are ready, fetch, abort, test-result, naming-complete, validating, duplicates, and
+commit. A connection-test permit can only be minted by the native Qt action.
+Read-only duplicate checks use QueryOp and inspect the complete target deck;
+the returned 200-front prompt hint does not limit conflict detection. Real Anki
+tests cover full case folding, filtered home decks, old fronts outside the hint,
+authorized commits, payload rejection, cancellation, and replay after Undo.
+
+The proxy derives the provider and credential reference from the Python job or
+test snapshot. The SDK owns model selection and all provider wire formats, per
+the revised plan; Python has no provider-specific request/response logic. The
+allowlist is data, not a custom-base-URL setting. Production connections use
+stdlib HTTPSConnection with default certificate verification and no redirect or
+environment-proxy handling. Only POST requests to allowed paths are accepted,
+with no query strings, fragments, userinfo, or custom ports. Headers must contain
+the SDK's placeholder; transport-control headers are refused. Generic placeholder
+replacement happens on the worker immediately before sending.
+
+Bodies are capped at 1 MiB in each direction, with separate bounded header and
+RPC-envelope sizes. JSON sanitization removes credentials from strings and keys,
+including Unicode-escaped echoes, without interpreting provider fields. Only a
+fixed JSON content-type header is returned. Compressed responses are refused.
+Redirects and raw transport exceptions become fixed categories. SDK warnings are
+disabled, and UI errors use fixed category messages rather than SDK exception text.
+
+There is at most one pending fetch per owner and four total; the proxy uses four
+workers and holds no collection reference. Each fetch reserves its original
+batch's attempt before transport. Socket timeouts and bridge polling bound a call
+to 60 seconds (or the remaining job time); native tests expire after 30 seconds.
+The job still has its original ten-minute deadline. Abort shuts down the matching
+socket and rejects JS immediately; canceled/expired owners reject other pending
+RPC promises. Auto-reconnect is disabled after connection. Responses arriving
+after cancellation are discarded. GUI delivery uses Anki's main-thread dispatcher.
+
+The spike uses the **built browser bundle** and all five real adapters:
+
+| Provider | Observed URL/path | Placeholder auth header |
+| --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1/responses` | `authorization: Bearer …` |
+| Anthropic | `https://api.anthropic.com/v1/messages` | `x-api-key` |
+| Google | `https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent` | `x-goog-api-key` |
+| xAI | `https://api.x.ai/v1/responses` | `authorization: Bearer …` |
+| Mistral | `https://api.mistral.ai/v1/chat/completions` | `authorization: Bearer …` |
+
+For each adapter, scripted structured output, a native-issued connection test,
+and in-flight SDK cancellation each assert exactly one HTTP attempt. Additional
+SDK connection tests distinguish success, authentication, model, rate-limit,
+and network outcomes; network failure preserves prior verification. The shared
+classifier also has unit coverage for quota, refusal, timeout, malformed output,
+and proxy refusals. Python fault tests cover unauthorized requests, exhausted
+budgets, replay, redirects, size limits, compression, raw exception suppression,
+plain/escaped key echoes, worker dispatch, and cancellation during blocked I/O.
+
+For an additional opt-in **loopback HTTP** proof, run:
+
+```powershell
+npm run test:proxy-loopback
+```
+
+This reruns the same SDK scenario against a disposable server on `127.0.0.1`, with
+fake Python-only credentials. Only the test connection factory maps approved
+HTTPS routes to local HTTP; production has no insecure transport switch. It sends
+19 fake HTTP requests, with one extra simulated network failure before sending.
+It does not test TLS, real provider behavior, Qt, or a real credential store.
+
 ## Coverage limits and remaining work
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
 
 - Provider API calls, SDK model compatibility, real credential stores and native onboarding behavior, and live transport retry/cancellation behavior.
 - The dedicated AI naming call and generation orchestration (local title repair, naming-before-cards authorization, and new-deck insertion are tested).
-- A live provider bridge, real Qt rendering, or user-driven review sessions. The panel exposes cancel, view-cards, uncertain-job inspection/acknowledgment, and guarded note-type repair commands. No generation commit command exists yet.
-- Provider allowlists and redirect handling, SDK browser compatibility, and real provider cancellation. OS credential operations and setup/settings dialog logic are implemented but tested with doubles. Abort callbacks are tested with doubles, not live HTTP requests.
+- Real provider compatibility, real Qt rendering, and user-driven review sessions. The commit bridge is authorized and tested; a working generation form is still pending.
+- Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM, with DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations and setup/settings dialog logic still require real-platform verification.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
 Use `ApplicationRuntime.start_configured_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers native Settings, recovery, and repair controls; it does not yet offer a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.

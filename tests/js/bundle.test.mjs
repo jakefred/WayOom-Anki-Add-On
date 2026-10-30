@@ -16,7 +16,13 @@ test('self-contained browser bundle loads SDK and updates the panel without Node
   const commands = [];
   const context = vm.createContext({
     window: {}, document: { querySelector: selector => elements[selector], createElement: makeElement },
-    pycmd: command => commands.push(command),
+    pycmd: command => {
+      if (command.startsWith('wayoom:v1:rpc:')) {
+        const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
+        assert.equal(message.op, 'ready');
+        context.window.wayoomBridge.receive({ v: 1, id: message.id, ok: true, result: {} });
+      } else commands.push(command);
+    },
     TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
     AbortController, AbortSignal, ReadableStream, TransformStream, setTimeout, clearTimeout,
   });

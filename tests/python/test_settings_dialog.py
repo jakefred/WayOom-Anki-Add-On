@@ -100,3 +100,25 @@ class SettingsDialogTests(unittest.TestCase):
         for text in ("billed", "topic", "Fronts", "unrelated decks", "dedicated", "spending limit",
                      "does not enable or enforce", "session-only", "uninstalling", "every profile", "revoke"):
             self.assertIn(text, DISCLOSURE)
+
+    def test_native_test_passes_only_provider_and_callback_and_preserves_verified_on_network_error(self):
+        self.service.save_key(self.store, "openai", "fake-saved", session_only=True, model_id="fixture")
+        requests = []
+        self.dialog.test_connection = lambda provider, callback: requests.append((provider, callback))
+        self.dialog.reload()
+        self.assertTrue(self.dialog.rows["openai"]["test"].enabled)
+        self.dialog.test_provider("openai")
+        self.assertEqual(requests[0][0], "openai")
+        self.assertFalse(self.dialog.rows["openai"]["test"].enabled)
+        requests[0][1]("network")
+        self.assertIn("not marked invalid", self.dialog.message.text())
+        self.assertTrue(self.dialog.rows["openai"]["test"].enabled)
+        self.dialog.rows["openai"]["key"].setText("fake-unsaved")
+        self.dialog.test_provider("openai")
+        self.assertEqual(len(requests), 1)
+        self.assertIn("Save", self.dialog.message.text())
+        self.dialog.clear_keys()
+        self.dialog.test_provider("openai")
+        self.dialog.reject()
+        requests[-1][1]("success")  # late callback must not mutate the closed dialog
+        self.assertTrue(self.dialog._closed)

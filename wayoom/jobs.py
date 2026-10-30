@@ -20,6 +20,7 @@ class _Job:
     aborts: list = field(default_factory=list)
     name_ready: bool = False
     generated_name: str | None = None
+    failure_category: str | None = None
 
 
 class JobCoordinator:
@@ -41,6 +42,7 @@ class JobCoordinator:
             job = self._jobs.get(profile)
             if job and job.state not in {"complete", "failed", "canceled"}:
                 job.state = "canceled"
+                job.failure_category = "canceled"
             aborts = list(job.aborts) if job else []
             if job:
                 job.aborts.clear()
@@ -69,6 +71,7 @@ class JobCoordinator:
             prior = self._jobs.get(profile)
             if prior and prior.state in {"generating", "validating"} and self._clock() >= prior.deadline:
                 prior.state = "failed"
+                prior.failure_category = "timeout"
                 self._abort(prior.aborts)
                 prior.aborts.clear()
             if prior and prior.state in {"generating", "validating", "adding"}:
@@ -93,8 +96,9 @@ class JobCoordinator:
             raise ValidationError("Unknown or stale job")
         if job.state not in states:
             raise ValidationError("Job is not authorized for this action")
-        if job.state != "adding" and self._clock() >= job.deadline:
+        if job.state in {"generating", "validating"} and self._clock() >= job.deadline:
             job.state = "failed"
+            job.failure_category = "timeout"
             self._abort(job.aborts)
             job.aborts.clear()
             raise ValidationError("Job timed out")
@@ -107,6 +111,7 @@ class JobCoordinator:
                 return None
             if job.state in {"generating", "validating"} and self._clock() >= job.deadline:
                 job.state = "failed"
+                job.failure_category = "timeout"
                 self._abort(job.aborts)
                 job.aborts.clear()
             count = job.request["cardCount"]
@@ -115,13 +120,19 @@ class JobCoordinator:
                 limit += 3
             return deepcopy({"request": job.request, "settings": job.settings,
                              "state": job.state, "callLimit": limit,
-                             "callsUsed": sum(job.calls.values()), "deckName": job.generated_name})
+                             "callsUsed": sum(job.calls.values()), "deckName": job.generated_name,
+                             "failureCategory": job.failure_category})
 
     def require_profile(self, profile, collection):
         with self._lock:
             session = self._sessions.get(profile)
             if not session or session[1] is not collection:
                 raise ValidationError("The active Anki profile changed")
+
+    def authorized_snapshot(self, profile, request_id, states=("generating", "validating")):
+        with self._lock:
+            job = self._require(profile, request_id, set(states))
+            return {**self.snapshot(profile), "remainingSeconds": max(0, job.deadline - self._clock())}
 
     def consume_call(self, profile, request_id, provider_id, *, stage="cards", batch=0):
         """Reserve an attempt BEFORE transport; failed attempts are not refunded."""
@@ -169,6 +180,7 @@ class JobCoordinator:
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
             job.state = "canceled"
+            job.failure_category = "canceled"
             job.generated_name = None
             aborts, job.aborts = job.aborts, []
         self._abort(aborts)
@@ -193,11 +205,13 @@ class JobCoordinator:
         with self._lock:
             job = self._require(profile, request_id, {"adding"})
             job.state = "complete" if success else "failed"
+            job.failure_category = None if success else "provider"
 
     def fail(self, profile, request_id):
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
             job.state = "failed"
+            job.failure_category = "provider"
             aborts, job.aborts = job.aborts, []
         self._abort(aborts)
 

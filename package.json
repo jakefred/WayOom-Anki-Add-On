@@ -8,7 +8,8 @@
     "pretest": "npm run build",
     "test": "node --test tests/js/*.test.mjs",
     "test:python": "python -m unittest discover -s tests/python -v",
-    "test:anki": "python -m unittest discover -s tests/integration -v"
+    "test:anki": "python -m unittest discover -s tests/integration -v",
+    "test:proxy-loopback": "node scripts/test_proxy_loopback.mjs"
   },
   "engines": {
     "node": ">=22"

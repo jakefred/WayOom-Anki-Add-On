@@ -1,14 +1,18 @@
 from pathlib import Path
 import json
+from threading import current_thread, main_thread
 # import the main window object (mw) from aqt
 from aqt import gui_hooks, mw
 from aqt.qt import QAction, QDockWidget, QTimer, Qt, QWidget
 from aqt.webview import AnkiWebView
 from .wayoom.runtime import ApplicationRuntime
 from .wayoom.validation import ValidationError
+from .wayoom.credentials import CredentialError
+from .wayoom.bridge import Bridge
 
 sidebar = None
 settings_dialog = None
+provider_bridge = None
 runtime = ApplicationRuntime(Path(__file__).with_name("user_files"), mw)
 status_timer = QTimer(mw)
 status_timer.setInterval(500)
@@ -48,8 +52,25 @@ def add_sidebar() -> None:
 
 
 def profile_opened() -> None:
+    global provider_bridge
     runtime.open_profile(mw.pm.name, mw.col)
     add_sidebar()
+    if provider_bridge is not None:
+        provider_bridge.close()
+    web, epoch = sidebar.widget(), runtime._epoch
+
+    def dispatch(callback):
+        if current_thread() is main_thread():
+            callback()
+        else:
+            mw.taskman.run_on_main(callback)
+
+    def deliver(message):
+        if sidebar is not None and sidebar.widget() is web and runtime._epoch == epoch:
+            encoded = json.dumps(message, ensure_ascii=True)
+            web.eval(f"window.wayoomBridge && window.wayoomBridge.receive({encoded});")
+
+    provider_bridge = Bridge(runtime, deliver, dispatch)
     visible = runtime.store.settings().get("panelVisible", True)
     sidebar.setVisible(visible)
     refresh_status()
@@ -73,17 +94,28 @@ def show_settings():
         if runtime.store is not store or runtime._epoch != epoch:
             raise ValidationError("The active profile changed. Reopen settings.")
         runtime.settings_guard()
+        if provider_bridge and provider_bridge.testing:
+            raise CredentialError("Wait for the connection test to finish before changing settings")
 
     def changed():
         if runtime.store is store and runtime._epoch == epoch:
             runtime.refresh_configuration()
             refresh_status()
 
-    dialog = SettingsDialog(mw, SettingsController(runtime.credentials, store, guard), changed)
+    def test_connection(provider, callback):
+        guard()
+        if provider_bridge is None:
+            raise CredentialError("The panel is still loading. Try again shortly.")
+        return provider_bridge.begin_test(provider, callback)
+
+    dialog = SettingsDialog(mw, SettingsController(runtime.credentials, store, guard), changed,
+                            test_connection=test_connection)
     settings_dialog = dialog
     try:
         dialog.exec()
     finally:
+        if provider_bridge:
+            provider_bridge.cancel_tests()
         dialog.clear_keys()
         dialog.deleteLater()
         settings_dialog = None
@@ -91,6 +123,8 @@ def show_settings():
 
 
 def refresh_status() -> None:
+    if provider_bridge is not None:
+        provider_bridge.poll()
     if sidebar is not None:
         state = json.dumps(runtime.panel_state(), ensure_ascii=True)
         sidebar.widget().eval(f"window.wayoomSetState && window.wayoomSetState({state});")
@@ -101,7 +135,10 @@ def panel_command(web, command):
     # serialized operation; inspection searches use only saved job IDs.
     if sidebar is None or sidebar.widget() is not web or runtime.store is None:
         return None
-    if command == "wayoom:v1:settings":
+    if command.startswith("wayoom:v1:rpc:"):
+        if provider_bridge:
+            provider_bridge.receive(command[len("wayoom:v1:rpc:"):])
+    elif command == "wayoom:v1:settings":
         show_settings()
     elif command == "wayoom:v1:view-cards" and runtime.outcome:
         runtime.view_cards(runtime.outcome["requestId"])
@@ -142,7 +179,10 @@ def toggle_sidebar(_checked=False) -> None:
     refresh_status()
 
 def close_sidebar() -> None:
-    global sidebar
+    global sidebar, provider_bridge
+    if provider_bridge is not None:
+        provider_bridge.close()
+        provider_bridge = None
     runtime.close_profile()
     if settings_dialog is not None:
         settings_dialog.reject()

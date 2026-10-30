@@ -1,0 +1,7 @@
+{
+  "openai": {"host": "api.openai.com", "path": "/v1/responses"},
+  "anthropic": {"host": "api.anthropic.com", "path": "/v1/messages"},
+  "google": {"host": "generativelanguage.googleapis.com", "pathPattern": "/v1beta/models/[A-Za-z0-9._-]+:generateContent"},
+  "xai": {"host": "api.x.ai", "path": "/v1/responses"},
+  "mistral": {"host": "api.mistral.ai", "path": "/v1/chat/completions"}
+}

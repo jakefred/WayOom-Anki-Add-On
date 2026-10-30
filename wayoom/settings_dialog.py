@@ -5,12 +5,27 @@ from aqt.qt import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
 from .credentials import CredentialError
 from .settings import DISCLOSURE, PROVIDER_INFO
+from .validation import ValidationError
+
+TEST_MESSAGES = {
+    "success": "Connection succeeded.", "authentication": "Credentials were rejected.",
+    "model": "The selected model is unavailable or unsupported.",
+    "quota": "Provider quota or credits are exhausted.", "rate-limit": "Provider rate limit reached.",
+    "network": "Network failure; the saved key was not marked invalid.", "timeout": "Connection test timed out.",
+    "canceled": "Connection test canceled.", "credentials": "Saved key unavailable; add a key in Settings.",
+    "refusal": "Provider refused the request.", "malformed": "Provider returned malformed output.",
+    "redirect": "Provider redirect refused.", "oversized": "Provider request or response exceeded the size limit.",
+    "refused": "Connection test was refused.", "provider": "Provider request failed.",
+}
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, controller, on_changed=lambda: None):
+    def __init__(self, parent, controller, on_changed=lambda: None, test_connection=None):
         super().__init__(parent)
         self.controller, self.on_changed = controller, on_changed
+        self.test_connection = test_connection
+        self._closed = False
+        self._testing = False
         self.setWindowTitle("WayOom setup and settings")
         self.setModal(True)
         self.resize(660, 760)
@@ -45,7 +60,8 @@ class SettingsDialog(QDialog):
             status = QLabel()
             test = QPushButton("Test connection")
             test.setEnabled(False)
-            test.setToolTip("Connection testing is not available yet.")
+            test.setToolTip("Tests the saved key and saved model. Save changes first.")
+            test.clicked.connect(lambda _checked=False, provider=provider: self.test_provider(provider))
             link = QLabel(f'<a href="{url}">Manage or revoke {name} keys</a>')
             link.setOpenExternalLinks(True)
             form.addRow("API key", key)
@@ -83,11 +99,42 @@ class SettingsDialog(QDialog):
                 storage = "session only" if config["storage"] == "session" else "OS protected storage"
                 status = f"Key configured ({storage}); connection {config['connectionStatus']}"
             row["status"].setText(status)
+            row["test"].setEnabled(bool(self.test_connection and config.get("available") and config.get("modelId") and not self._testing))
         self.active.setCurrentIndex(max(0, self.active.findData(state["activeProviderId"])))
 
     def clear_keys(self):
         for row in self.rows.values():
             row["key"].clear()
+
+    def test_provider(self, provider):
+        row = self.rows[provider]
+        saved = self.controller.summary()["providers"].get(provider, {})
+        if row["key"].text() or row["remove"].isChecked() or row["model"].text().strip() != saved.get("modelId", ""):
+            self.message.setText("Save key and model changes before testing.")
+            return
+        if self._testing or not self.test_connection:
+            return
+        self._testing = True
+        for item in self.rows.values():
+            item["test"].setEnabled(False)
+        self.message.setText("Testing connection…")
+
+        def complete(category):
+            if self._closed:
+                return
+            self._testing = False
+            self.message.setText(TEST_MESSAGES.get(category, TEST_MESSAGES["provider"]))
+            self.reload()
+            self.on_changed()
+
+        try:
+            self.test_connection(provider, complete)
+        except ValidationError as error:
+            self._testing = False
+            self.message.setText(str(error))
+            self.reload()
+        except Exception:
+            complete("provider")
 
     def save(self):
         changes = {provider: {"key": row["key"].text(), "modelId": row["model"].text(),
@@ -122,5 +169,6 @@ class SettingsDialog(QDialog):
             self.on_changed()
 
     def done(self, result):
+        self._closed = True
         self.clear_keys()
         super().done(result)

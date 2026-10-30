@@ -124,6 +124,17 @@ class SidebarTests(unittest.TestCase):
             self.addon.panel_command(self.addon.sidebar.widget(), "wayoom:v1:view-cards")
             view.assert_called_once_with("job-1")
 
+    def test_rpc_is_restricted_to_current_panel_and_profile_close_rejects_pending_client(self):
+        self.addon.profile_opened()
+        bridge = self.addon.provider_bridge
+        with patch.object(bridge, "receive") as receive:
+            self.addon.panel_command(object(), 'wayoom:v1:rpc:{"v":1}')
+            receive.assert_not_called()
+            self.addon.panel_command(self.addon.sidebar.widget(), 'wayoom:v1:rpc:{"v":1}')
+            receive.assert_called_once_with('{"v":1}')
+        self.addon.close_sidebar()
+        self.assertTrue(bridge._closed)
+
     def test_recovery_and_repair_commands_are_scoped_to_live_panel(self):
         self.addon.profile_opened()
         request = {"requestId": "old", "cardCount": 1, "destination": {}, "providerId": "openai"}

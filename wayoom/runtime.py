@@ -93,7 +93,7 @@ class ApplicationRuntime:
         self.error = self.failure_action = None
         return job
 
-    def add_cards(self, request, result, on_complete=None):
+    def add_cards(self, request, result, on_complete=None, on_failure=None):
         if not self.ready or self.repairing:
             raise ValidationError("Job recovery must finish before insertion")
         epoch = self._epoch
@@ -115,6 +115,8 @@ class ApplicationRuntime:
                 if record and record["state"] == "committed":
                     self.outcome = record.get("outcome")
                     self.error = self.failure_action = None
+                    if on_complete:
+                        on_complete({"state": "committed", "outcome": self.outcome})
                     return
                 job = self.coordinator.snapshot(self.profile)
                 if job and job["request"]["requestId"] == request_id:
@@ -129,6 +131,8 @@ class ApplicationRuntime:
                     reason = str(error) if isinstance(error, ValidationError) else "The operation failed."
                     self.error = f"{stage} failed: {reason}"
                     self.failure_action = "repair-note-type" if isinstance(error, NoteTypeRepairRequired) else "retry"
+                if on_failure:
+                    on_failure()
 
         try:
             return add_cards_in_background(self.parent, self.collection, request, result,
@@ -214,6 +218,10 @@ class ApplicationRuntime:
         labels = {"generating": "Generating", "validating": "Validating", "adding": "Adding cards — finishing",
                   "complete": "Complete", "failed": "Failed", "canceled": "Canceled"}
         message = labels[state]
+        if state == "failed":
+            message = "Generation timed out." if job.get("failureCategory") == "timeout" else "Generation failed."
+            return {"state": state, "message": message, "canView": False,
+                    "provider": job["request"]["providerId"], "action": "retry"}
         if state == "complete" and self.outcome:
             message = f"Added {self.outcome['count']} cards to {self.outcome['deckName']}"
         return {"state": state, "message": message, "canView": bool(self.outcome),

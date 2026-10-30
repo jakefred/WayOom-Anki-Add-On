@@ -70,3 +70,29 @@ def repair_type_in_background(parent, expected_collection, *, coordinator, store
     return (CollectionOp(parent=parent, op=repair)
             .success(lambda _changes: on_complete())
             .failure(on_failure).run_in_background())
+
+
+def check_fronts_in_background(parent, expected_collection, *, coordinator, store, profile,
+                               request, fronts, on_complete, on_failure):
+    from aqt.operations import QueryOp
+    from .cards import generated_fronts
+    from .validation import question_key
+
+    def check(col):
+        if col is not expected_collection:
+            raise ValidationError("The active Anki profile changed")
+        coordinator.require_profile(profile, col)
+        coordinator.authorized_snapshot(profile, request["requestId"])
+        settings = store.settings()
+        existing = generated_fronts(col, request["destination"]["deckId"], settings.get("notetypeId"),
+                                    settings.get("ownedNotetypeIds", [])) if request["destination"]["mode"] == "existing" else []
+        seen = {question_key(front) for front in existing}
+        conflicts = []
+        for index, front in enumerate(fronts):
+            key = question_key(front)
+            if key in seen:
+                conflicts.append(index)
+            seen.add(key)
+        return {"conflicts": conflicts, "avoidFronts": existing[:200]}
+
+    return QueryOp(parent=parent, op=check, success=on_complete).failure(on_failure).run_in_background()
