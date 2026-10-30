@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package": "python scripts/package_addon.py",
     "pretest": "npm run build",
     "test": "node --test tests/js/*.test.mjs",
     "test:python": "python -m unittest discover -s tests/python -v",

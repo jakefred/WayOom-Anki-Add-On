@@ -25,3 +25,15 @@ Only maintainers updating the dependency pins should run
 the manifest. Review dependency changes before release (SEC-10).
 
 Backend API reference: https://keyring.readthedocs.io/en/latest/
+
+Release packaging reads the verified wheel contents directly, so untracked or
+stale files in `runtime/` are never shipped. The package retains wheel license
+files and distribution metadata, while excluding tests, docs, and bytecode.
+
+`licenses/Apache-2.0.txt` is the full Apache 2.0 license text, copied unchanged
+from the pinned cryptography wheel's `licenses/LICENSE.APACHE` (also published at
+https://www.apache.org/licenses/LICENSE-2.0.txt). It accompanies the bundled JS
+notices as several SDK license files contain only an attribution and license link.
+The pinned `@ai-sdk/provider-utils` npm tarball omits LICENSE despite declaring
+Apache-2.0; packaging includes the same Vercel project's attribution from
+`ai/LICENSE` and the full license text. No dependency pins changed in milestone 6.

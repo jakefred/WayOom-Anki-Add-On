@@ -56,8 +56,8 @@ The default tests require no API keys, provider account, open Anki window, or re
 
 `npm test` also builds the self-contained browser bundle with esbuild. The generated
 `web/dist/panel.js` is ignored by Git and served through Anki's add-on web exports;
-run `npm run build` before loading a source checkout in Anki. End-user packaging
-will include this generated asset. CI explicitly builds after `npm ci --ignore-scripts`.
+run `npm run build` before loading a source checkout in Anki. The `.ankiaddon`
+includes this generated asset. CI explicitly builds after `npm ci --ignore-scripts`.
 The build test loads the bundle in a Node VM with browser globals and a DOM double,
 without Node module globals, initializes all five adapters with a required custom
 fetch, and exercises panel updates and bridge button commands. This proves bundle
@@ -67,7 +67,7 @@ The in-process provider responses are fixtures, not live model behavior.
 
 The exact AI SDK and provider adapter versions in `package.json` are runtime
 dependencies for the generation engine. esbuild is a development dependency
-only. Structured generation will use `generateText` with `Output.object`, following
+only. Structured generation uses `generateText` with `Output.object`, following
 the [current SDK documentation](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data).
 The SDK boundary requires a supplied fetch and uses only a nonsecret placeholder;
 native connection tests and the generation engine call through the bridge.
@@ -330,6 +330,115 @@ collection. JSON-line test pipes explicitly use UTF-8 so names round-trip correc
 on Windows. No real keys, real credential stores, real Qt windows, or real providers
 are used.
 
+## Packaging and upgrade verification
+
+Milestone 6 packages the current implementation. **Milestone 5 remains pending**:
+this is an incomplete development artifact, without a working generation form.
+Packaging does not close the live-provider, real Qt, actual credential-store,
+educational-quality, dependency-review, or cross-platform CI release gates.
+
+From a checkout with Node 24 and CPython 3.12, install exactly the locked JS
+dependencies and run:
+
+```powershell
+npm ci --ignore-scripts
+.\.venv\Scripts\python.exe scripts/package_addon.py
+```
+
+With the intended Python active, `npm run package` is equivalent. The command
+always rebuilds `web/dist/panel.js`; it does not download anything. It verifies
+all pinned wheel SHA-256 hashes and packages their runtime contents directly,
+without trusting an existing `vendor/runtime` directory. End users need none of
+the build tools. The output is `dist/wayoom-0.1.0.ankiaddon` and a `.sha256` sidecar;
+both are ignored by Git. `--output PATH` selects another artifact destination.
+
+The root manifest uses stable package identity `wayoom`, human version `0.1.0`,
+and `min_point_version: 260903`, meaning Anki **26.9.3**. See Anki's
+[manifest parser](https://github.com/ankitects/anki/blob/main/qt/aqt/addons.py) and
+[version encoding](https://github.com/ankitects/anki/blob/main/pylib/anki/utils.py).
+This minimum deliberately matches the tested backend, without asserting that
+real Qt or all future versions work. Installing a source checkout under a
+different package directory creates a separate installation; it is not upgraded
+or migrated automatically.
+
+The archive has no enclosing directory and includes only explicitly listed
+production Python modules/JSON, root entry point, manifest, panel HTML, compiled
+JS, the user README, dependency notices, and wheel-derived Python runtime files.
+It excludes `user_files`, tests, source JS, wheels, build scripts, Node modules,
+virtual environments, caches, and source maps. Dependency distribution metadata
+and licenses remain included. The SDK's provider-utils tarball omits its license
+file; its Apache-2.0 attribution comes from the same Vercel project's `ai/LICENSE`,
+with full Apache text included in the generated notices. See vendor/README.md.
+
+Entries are sorted, use fixed 1980 timestamps and 0644 permissions, and use ZIP
+STORE to avoid compression-library variation. Project text is normalized to LF;
+wheel contents are preserved byte for byte. Repeated local builds are tested for
+identical archive bytes, including a dirty disposable checkout with CRLF source
+and sentinel files. A corrupt wheel fails without replacing a prior artifact.
+The lockfiles and verified wheels are build inputs; build from a clean checkout
+with `npm ci`, rather than reusing modified dependencies. Cross-platform identical
+hashes have not yet been observed. CI now builds and uploads one archive/checksum
+per operating system after its tests pass; remote results remain pending.
+
+`tests/python/test_packaging.py` audits the actual archive, imports shipped
+credential dependencies in an isolated interpreter without site-packages, and
+simulates Anki's replace-everything-except-`user_files` upgrade policy in a temporary
+installation. Two profiles retain byte-identical settings, visibility, owned type
+IDs, pending-job records, cleanup journals, model choices, and credential references.
+A fresh interpreter imports the installed modules and confirms that a fake external
+OS vault still resolves those references, so setup is not required again. Obsolete
+code is removed. This proves persistence under the modeled policy, **not** a real
+AddonManager/Qt install or actual OS-store access. Session-only keys are intentionally
+not persistent (covered separately by credential tests). Use a disposable real Anki
+base folder for the outstanding manual install/upgrade check.
+
+The packaged [README](README.md) includes installation, upgrade identity, privacy,
+platform limits, and uninstall guidance. Before uninstalling, use **Settings →
+Remove all keys — every profile** and wait for successful deletion. Uninstalling
+alone can leave OS-store keys. If removal fails or the add-on has already been
+deleted, revoke the dedicated keys through the provider's key-management pages.
+
+## Acceptance-criteria verification map
+
+“Automated” below names the tested boundary, not certification of the complete
+criterion. “Manual pending” requires real Anki/Qt or OS stores. “Live pending”
+requires real providers or human quality review. Form behavior remains unimplemented
+until milestone 5; a backend or engine test does not prove that form interaction.
+All automated provider calls use fake replies and fake keys.
+
+| Criterion | Current evidence | Remaining verification |
+| --- | --- | --- |
+| AC-01 First setup | Automated: `test_sidebar.py`, `test_settings_dialog.py` first-open/setup logic with Qt doubles | Manual pending: native popup in real Anki |
+| AC-02 Cancel setup | Automated: dialog cancel and no-save logic, sidebar lifecycle | Manual pending: actual dialog and continued Anki use |
+| AC-03 Reopen settings | Automated: `test_credentials.py` fake-vault reopen, sidebar setup suppression | Manual pending: real OS vault and profile reopen |
+| AC-04 Five providers | Automated: `generation-integration.test.mjs` five real adapters → bridge → disposable Anki with fake replies | Live pending: all five services; form pending |
+| AC-05 Existing-deck count | Automated: `test_anki_cards.py`, `test_jobs_and_decks.py` exact counts, existing cards/scheduling preserved | Form pending: request 10 through UI; manual pending: review |
+| AC-06 Explicit deck name | Automated: real-backend collision suffix and preservation tests | Form pending; manual pending: selection and displayed name |
+| AC-07 AI deck name | Automated: generation naming/repair and SDK-to-Anki fake pipeline | Live pending: topic relevance; form pending |
+| AC-08 Counts 1 and 100 | Automated: engine exact-call tests and real-backend insertion counts | Form pending; manual pending: boundary entry |
+| AC-09 Invalid inputs | Automated: shared validators and engine zero-provider-call assertions | Form pending: inline errors and entry handling |
+| AC-10 Difficulty | Automated: `generation.test.mjs` difficulty/language prompt assertions | Live pending: NFR-08 sample and ≥80% human rating; form pending |
+| AC-11 Invalid output repair | Automated: engine malformed/empty/duplicate/short/excess output budgets; fake pipeline zero writes on failure | Live pending: model behavior |
+| AC-12 Generation failures | Automated: shared classification, engine timeout/errors, atomic backend failure checks | Form pending: preserved fields/actionable retry; live pending: services |
+| AC-13 Duplicate submission | Automated: bridge replay, durable commit replay and no reinsertion | Form pending: double-click Generate |
+| AC-14 Cancel/profile switch | Automated: engine late responses, coordinator/bridge ownership, real-backend canceled write guards | Manual pending: UI cancel/switch; live pending: provider cancellation |
+| AC-15 Destination/type changes | Automated: real-backend deleted/filtered destination, incompatible type, non-destructive replacement | Manual pending: user-driven repair; form pending |
+| AC-16 Write failure | Automated: real-backend rollback/compensation preserves pre-existing data | Manual pending: actual error presentation |
+| AC-17 One Undo | Automated: real backend Undo/Redo for cards, deck, type and prior scheduling | Manual pending: Anki Undo menu interaction |
+| AC-18 Inert content | Automated: real Anki rendering escape tests, bundle DOM text insertion, restricted bridge sender | Manual pending: real webview/card interaction |
+| AC-19 Secret exclusion | Automated: fake-vault persistence/log/exception/state checks, proxy scrubbing and packaged-data exclusion | Manual pending: actual stores/platform diagnostics |
+| AC-20 Interrupted response | Automated: durable status recovery, restart/tag reconciliation, unresolved evidence blocks writes | Manual pending: actual Anki restart/inspection |
+| AC-21 Connection tests | Automated: all five SDK adapters, fake connection outcomes, verification preserved on network failure | Live pending: real outcomes; manual pending: native button |
+| AC-22 Repeated topic duplicates | Automated: avoid-list accumulation; full Python casefold/deck checks including filtered cards and >200 hints | Live pending: actual repeated-topic output; form pending |
+| AC-23 View cards | Automated: runtime saved-tag search and bundle button dispatch | Manual pending: real Browser shows precisely the job's cards |
+| AC-24 Retained retry | Automated: partial-failure pipeline retains 25 and generates only missing 75; changed inputs discard cache | Form pending: Retry button/input-edit wiring |
+| AC-25 Panel lifecycle | Automated: `test_sidebar.py` first opening, visibility persistence, hide without cancellation | Manual pending: real Qt docking and menu interaction |
+| AC-26 Upgrade | Automated: `test_packaging.py` disposable replacement simulation preserves two profiles and fake OS-key references; installed-module reopen needs no setup | Manual pending: real Anki installation/upgrade and OS store |
+| AC-27 Allowlist | Automated: `test_proxy_bridge.py` invalid host/path/redirect refusal before credential delivery | Live pending: real provider routing compatibility |
+| AC-28 Call authorization | Automated: coordinator/bridge budgets, stale-owner refusal, original-batch retry limits | Manual pending: real lifecycle timing |
+| AC-29 Secret-safe errors | Automated: fake echoed secrets scrubbed from bodies/errors, credential traceback/log checks | Live pending: real error formats; manual pending: platform diagnostics |
+| AC-30 Remove all keys | Automated: fake-vault removal across profiles, interrupted-save cleanup, deletion-failure evidence, native-dialog doubles | Manual pending: actual stores on all three OSes |
+
 ## Coverage limits and remaining work
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
@@ -342,7 +451,7 @@ These tests do not certify the full software requirements specification. The fol
 
 Use `ApplicationRuntime.start_configured_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers native Settings, recovery, and repair controls; it does not yet offer a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.
 
-The pinned integration target is Anki **26.9.3**. This does not establish a minimum supported Anki version. The GitHub Actions workflow runs these suites on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
+The pinned integration target and packaged minimum are Anki **26.9.3**. Real Qt compatibility remains unverified. The GitHub Actions workflow runs these suites and packages artifacts on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 
 ## References
 
