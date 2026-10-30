@@ -1,0 +1,10 @@
+# Local project specification
+/SOFTWARE_REQUIREMENTS_SPECIFICATION.md
+
+# Local dependencies and test artifacts
+/node_modules/
+/.venv/
+**/__pycache__/
+/.test-tmp/
+/coverage/
+/user_files/

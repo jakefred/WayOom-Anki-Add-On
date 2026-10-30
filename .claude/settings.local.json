@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc -l)",
+      "Bash(ls \"C:/Users/jakef/.claude/projects/c--Users-jakef-projects-WayOom/memory/\" 2>/dev/null && cat \"C:/Users/jakef/.claude/projects/c--Users-jakef-projects-WayOom/memory/MEMORY.md\" 2>/dev/null; cat \"c:/Users/jakef/projects/WayOom/.claude/settings.local.json\")",
+      "Read(//c/Users/jakef/.claude/projects/c--Users-jakef-projects-WayOom/memory/**)",
+      "Bash(npm test *)",
+      "Bash(./.venv/Scripts/python.exe \"C:/Users/jakef/AppData/Local/Temp/claude/c--Users-jakef-projects-WayOom/ee27d76d-dd7c-4912-a109-257c843a034c/scratchpad/test_probe.py\")"
+    ]
+  }
+}

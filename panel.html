@@ -1,0 +1,39 @@
+<style>
+  body {
+    font-family: sans-serif;
+    padding: 24px;
+  }
+
+  .panel {
+    padding: 24px;
+    border: 1px solid #888;
+    border-radius: 12px;
+  }
+
+  button {
+    padding: 10px 16px;
+    cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+  button:disabled { cursor: default; }
+</style>
+
+<section class="panel">
+  <h1>WayOom</h1>
+  <p id="message" role="status" aria-live="polite">Ready</p>
+  <p id="provider"></p>
+  <button id="cancel" hidden>Cancel generation</button>
+  <button id="view-cards" hidden>View cards</button>
+</section>
+
+<script>
+  window.wayoomSetState = state => {
+    document.querySelector('#message').textContent = state.message;
+    document.querySelector('#provider').textContent = state.provider ? `Provider: ${state.provider}` : '';
+    document.querySelector('#cancel').hidden = !['generating', 'validating', 'adding'].includes(state.state);
+    document.querySelector('#cancel').disabled = state.state === 'adding';
+    document.querySelector('#view-cards').hidden = !state.canView;
+  };
+  document.querySelector('#cancel').addEventListener('click', () => pycmd('wayoom:v1:cancel'));
+  document.querySelector('#view-cards').addEventListener('click', () => pycmd('wayoom:v1:view-cards'));
+</script>

@@ -1,0 +1,2 @@
+# Real Anki backend; installed only in the isolated test environment.
+anki==26.9.3

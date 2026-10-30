@@ -1,0 +1,17 @@
+{
+  "name": "wayoom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/js/*.test.mjs",
+    "test:python": "python -m unittest discover -s tests/python -v",
+    "test:anki": "python -m unittest discover -s tests/integration -v"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}
