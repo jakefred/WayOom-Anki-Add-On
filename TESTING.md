@@ -36,6 +36,7 @@ Use standard CPython 3.12 and Node.js 22 or later (CI uses Node 24). Native Anki
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-test.txt
 npm ci --ignore-scripts
+npm run build
 ```
 
 On macOS/Linux, use `.venv/bin/python` instead of `.venv\Scripts\python.exe`.
@@ -51,6 +52,22 @@ npm test
 Alternatively, activate the virtual environment and use `npm run test:python` and `npm run test:anki`. The integration suite also needs Node and the installed Zod dependency for the cross-language round trip. Missing dependencies fail the suite rather than silently skip integration coverage.
 
 The tests require no API keys, provider account, open Anki window, or real user profile. They make no AI requests. Integration collections live under `.test-tmp/anki-test-*` and are closed and removed after each test. An interrupted process can leave a temporary directory there; never point these tests at a personal collection.
+
+`npm test` also builds the self-contained browser bundle with esbuild. The generated
+`web/dist/panel.js` is ignored by Git and served through Anki's add-on web exports;
+run `npm run build` before loading a source checkout in Anki. End-user packaging
+will include this generated asset. CI explicitly builds after `npm ci --ignore-scripts`.
+The build test loads the bundle in a Node VM with browser globals and a DOM double,
+without Node module globals, initializes all five adapters with a required custom
+fetch, and exercises panel updates and bridge button commands. This proves bundle
+loading under a double, not real Qt rendering or provider transport compatibility.
+
+The exact AI SDK and provider adapter versions in `package.json` are runtime
+dependencies for the planned generation engine. esbuild is a development dependency
+only. Structured generation will use `generateText` with `Output.object`, following
+the [current SDK documentation](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data).
+The SDK boundary requires a supplied fetch and uses only a nonsecret placeholder;
+no provider calls are connected yet.
 
 ## Implementation entry points
 

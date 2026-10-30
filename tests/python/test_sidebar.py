@@ -56,6 +56,11 @@ class SidebarTests(unittest.TestCase):
         self.qt.QDockWidget.assert_called_once()
         html = self.webview.AnkiWebView.return_value.stdHtml.call_args.args[0]
         self.assertIn("<section", html)
+        self.assertNotIn("<script>", html)
+        self.assertEqual(self.webview.AnkiWebView.return_value.stdHtml.call_args.kwargs["js"],
+                         [f"/_addons/{self.aqt.mw.addonManager.addonFromModule.return_value}/web/dist/panel.js"])
+        self.aqt.mw.addonManager.setWebExports.assert_called_once_with(
+            self.addon.__name__, r"web/dist/.*\.js")
         self.aqt.mw.addDockWidget.assert_called_once()
 
     def test_profile_close_cleans_up_and_next_profile_can_reopen(self):

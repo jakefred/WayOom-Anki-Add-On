@@ -14,6 +14,7 @@ menu_action = QAction("WayOom", mw)
 menu_action.setCheckable(True)
 menu_action.setEnabled(False)
 mw.form.menuTools.addAction(menu_action)
+mw.addonManager.setWebExports(__name__, r"web/dist/.*\.js")
 
 # Add the HTML sidebar to Anki's main window.
 def add_sidebar() -> None:
@@ -36,7 +37,8 @@ def add_sidebar() -> None:
     html = Path(__file__).with_name("panel.html").read_text(
         encoding="utf-8"
     )
-    web.stdHtml(html)
+    addon_id = mw.addonManager.addonFromModule(__name__)
+    web.stdHtml(html, js=[f"/_addons/{addon_id}/web/dist/panel.js"])
 
     mw.addDockWidget(
         Qt.DockWidgetArea.LeftDockWidgetArea, sidebar

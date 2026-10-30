@@ -126,7 +126,15 @@ You cannot close these. Leave them listed as open, with tooling ready.
 Fill this in as you go, in this section.
 
 - **Decisions made beyond this plan:**
+  - Milestone 0: use an IIFE browser bundle targeting Chrome 100, served with Anki's `setWebExports` and `stdHtml(js=...)`. Require an explicit custom fetch when creating an SDK model. Real Qt compatibility remains unverified.
+  - Pinned `ai` 7.0.158, OpenAI 4.0.106, Anthropic 4.0.93, Google 4.0.109, xAI 5.0.34, Mistral 4.0.76 for the planned SDK engine; esbuild 0.28.2 is build-only. Versions were resolved from npm. The documented structured API is `generateText` with `Output.object`; no generation is wired yet.
 - **Spec and doc changes:**
+  - TESTING.md now documents the build step, generated asset, SDK boundary, and exact scope of the browser-bundle test. No spec edits yet.
 - **Existing tests changed, and why:**
+  - Extended the sidebar load test to assert the exported bundle URL and absence of inline scripts after moving existing JavaScript into the bundled entry point. No existing expectations were weakened.
 - **Test results actually observed:**
+  - Baseline commit `186b426`: 63 JS, 39 Python unit, 47 real-backend integration tests passed.
+  - Milestone 0: clean `npm ci --ignore-scripts` passed; bundle build passed; 64 JS, 39 Python unit, 47 real-backend integration tests passed. npm reported no vulnerabilities. All Anki collections were disposable.
+  - Windows sandbox ACLs prevented esbuild reading ancestor directories; build/install verification succeeded with elevated tool execution. Git commits also required elevated execution because `.git` is read-only in the sandbox. Used command-scoped `safe.directory`, without changing global Git configuration.
 - **Unverified or incomplete:**
+  - Milestone 0 complete under test doubles. Milestones 1–7 remain, including all listed core defects. Real Qt/webview, provider requests, credential stores, cross-platform CI, and every human production gate remain open.
