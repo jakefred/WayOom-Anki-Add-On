@@ -126,6 +126,9 @@ Duplicate checks include filtered cards whose home deck is the target and earlie
 owned note types after repair. Repair creates a new owned type and updates the saved
 reference without changing old notes, templates, or CSS. Nonsecret `ownedNotetypeIds`
 retains earlier type IDs so removing a note's tags cannot hide it from this check.
+The provider prompt hint includes only fronts carrying a WayOom job tag. Manual
+notes in an owned type are still checked locally for duplicates, and an unrelated
+note with only a `wayoom` tag is neither checked nor sent as a prompt hint.
 Backend tests cover preservation and duplicate rejection; scheduling and the repair
 button are tested with Qt/DOM doubles.
 

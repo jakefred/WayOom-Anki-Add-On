@@ -103,8 +103,10 @@ def check_fronts_in_background(parent, expected_collection, *, coordinator, stor
             if deck is None or deck.get("dyn"):
                 raise ValidationError("Destination must be an existing normal deck")
         settings = store.settings()
-        existing = generated_fronts(col, request["destination"]["deckId"], settings.get("notetypeId"),
-                                    settings.get("ownedNotetypeIds", [])) if request["destination"]["mode"] == "existing" else []
+        existing, prompt_fronts = generated_fronts(
+            col, request["destination"]["deckId"], settings.get("notetypeId"),
+            settings.get("ownedNotetypeIds", []), with_prompt=True
+        ) if request["destination"]["mode"] == "existing" else ([], [])
         seen = {question_key(front) for front in existing}
         conflicts = []
         for index, front in enumerate(fronts):
@@ -112,6 +114,6 @@ def check_fronts_in_background(parent, expected_collection, *, coordinator, stor
             if key in seen:
                 conflicts.append(index)
             seen.add(key)
-        return {"conflicts": conflicts, "avoidFronts": existing[:200]}
+        return {"conflicts": conflicts, "avoidFronts": prompt_fronts[:200]}
 
     return QueryOp(parent=parent, op=check, success=on_complete).failure(on_failure).run_in_background()

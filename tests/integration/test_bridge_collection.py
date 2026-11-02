@@ -101,6 +101,27 @@ class BridgeCollectionTests(unittest.TestCase):
         self.assertNotIn("Straße?", result["result"]["avoidFronts"])
         self.assertEqual(self.col.card_count(), 201)
 
+    def test_prompt_hint_excludes_manual_notes_while_duplicate_check_includes_them(self):
+        note = self.col.new_note(self.col.models.get(self.mid))
+        note["Front"] = "Private manual question?"
+        note["Back"] = "Private answer"
+        note.tags = ["wayoom"]
+        self.col.add_note(note, self.did)
+        unrelated = self.col.new_note(self.col.models.by_name("Basic"))
+        unrelated["Front"] = "Unrelated tagged question?"
+        unrelated["Back"] = "Private answer"
+        unrelated.tags = ["wayoom"]
+        self.col.add_note(unrelated, self.did)
+        insert_basic_cards(self.col, {**self.request, "requestId": "generated-seed"},
+                           {"deckName": None, "cards": [{"front": "Generated question?", "back": "Answer"}]}, self.mid)
+        job = self.runtime.start_job(self.request, {})
+        result = self.rpc("duplicates", {"requestId": job["request"]["requestId"],
+                                         "fronts": ["PRIVATE MANUAL QUESTION?", "Generated question?",
+                                                    "Unrelated tagged question?"]})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["result"]["conflicts"], [0, 1])
+        self.assertEqual(result["result"]["avoidFronts"], ["Generated question?"])
+
     def test_canceled_commit_and_invalid_payload_cannot_write_or_stick_in_validation(self):
         job = self.runtime.start_job(self.request, {})
         response = self.rpc("commit", {"requestId": job["request"]["requestId"], "result": {"unexpected": "field"}})

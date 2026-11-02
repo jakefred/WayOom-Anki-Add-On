@@ -97,21 +97,29 @@ def insert_basic_cards(col, request, result, notetype_id, *, _rollback=True, own
     return changes
 
 
-def generated_fronts(col, deck_id, notetype_id=None, owned_notetype_ids=()):
-    """Include earlier owned types after repair and filtered cards' home decks."""
-    ids = set(col.find_notes("tag:wayoom"))
+def generated_fronts(col, deck_id, notetype_id=None, owned_notetype_ids=(), *, with_prompt=False):
+    """Check all owned fronts; expose only job-tagged fronts for provider prompts."""
+    tagged_ids = set(col.find_notes("tag:wayoom"))
+    owned_ids = set()
     for mid in set(owned_notetype_ids) | ({notetype_id} if notetype_id else set()):
-        ids.update(col.find_notes(f"mid:{mid}"))
-    fronts = []
-    for nid in sorted(ids, reverse=True):
+        owned_ids.update(col.find_notes(f"mid:{mid}"))
+    fronts, prompt_fronts = [], []
+    for nid in sorted(tagged_ids | owned_ids, reverse=True):
         note = col.get_note(nid)
+        job_tagged = any(re.fullmatch(r"wayoom::job::[A-Za-z0-9_-]{1,128}", tag, re.I)
+                         for tag in note.tags)
+        if nid not in owned_ids and not job_tagged:
+            continue
         if any((card.odid or card.did) == deck_id for card in note.cards()):
             if note.fields:
                 # Prefer the named field after reordering; use the original
                 # first field if a user renamed Front in an earlier owned type.
                 front = note["Front"] if "Front" in note else note.fields[0]
-                fronts.append(unescape(re.sub(r"<br\s*/?>", "\n", front, flags=re.I)))
-    return fronts
+                plain_front = unescape(re.sub(r"<br\s*/?>", "\n", front, flags=re.I))
+                fronts.append(plain_front)
+                if with_prompt and job_tagged:
+                    prompt_fronts.append(plain_front)
+    return (fronts, prompt_fronts) if with_prompt else fronts
 
 
 def repair_basic_notetype(col, store):
