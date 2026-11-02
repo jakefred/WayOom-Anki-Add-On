@@ -38,6 +38,8 @@ def fake_response(path, body, headers):
     model = body.get("model", "gemini-test")
     auth = [name.lower() for name, value in headers.items() if FAKE_KEY in value]
     records.append({"path": path, "model": model, "authNames": auth, "method": "POST"})
+    if mode.get("verification"):
+        output({"v": 1, "event": "verification-request-sent"})
     if mode["delay"]:
         release.wait(3)
     if mode["error"]:
@@ -190,6 +192,21 @@ with tempfile.TemporaryDirectory(prefix="anki-test-engine-" if "--generation" in
         elif operation == "fixture-panel-state":
             runtime.refresh_configuration()
             bridge.reply(message["id"], runtime.panel_state())
+        elif operation == "verification-info":
+            mode["verification"] = True
+            runtime.refresh_configuration()
+            provider = runtime.configuration["activeProviderId"]
+            bridge.reply(message["id"], {"providerId": provider,
+                                        "modelId": runtime.configuration["providers"][provider]["modelId"],
+                                        "ankiVersion": "26.9.3", "networkMode": "socket-free fake"})
+        elif operation == "verification-test":
+            mode["generation"] = False
+            bridge.begin_test(runtime.configuration["activeProviderId"], lambda category: output(
+                {"v": 1, "event": "verification-test-result", "category": category}))
+            bridge.reply(message["id"], {})
+        elif operation == "verification-status":
+            job = runtime.coordinator.snapshot(runtime.profile)
+            bridge.reply(message["id"], {"cardCount": collection.card_count(), "state": job["state"] if job else None})
         elif operation == "fixture-start":
             job = runtime.coordinator.snapshot(runtime.profile)
             if job and job["state"] in {"generating", "validating"}:
@@ -215,6 +232,8 @@ with tempfile.TemporaryDirectory(prefix="anki-test-engine-" if "--generation" in
             release.clear() if mode["delay"] else release.set()
             bridge.reply(message["id"], {})
         else:
+            if operation == "start" and mode.get("verification"):
+                mode["generation"] = True
             bridge.receive(line)
     bridge.close()
     runtime.close_profile()

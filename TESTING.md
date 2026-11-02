@@ -2,7 +2,7 @@
 
 ## What these tests establish
 
-The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, an SDK-to-Python provider bridge, a generation engine, and its generation form. The sidebar opens a runtime that reconciles saved jobs before permitting generation. Form events are tested through disposable Anki with fake provider replies; real Qt/webview and live-provider verification remain pending.
+The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, an SDK-to-Python provider bridge, a generation engine, and its generation form. The sidebar opens a runtime that reconciles saved jobs before permitting generation. Form events are tested through disposable Anki with fake provider replies. A limited Windows offscreen Qt/Chromium smoke also passed; full Anki UI, actual OS stores and live providers remain pending.
 
 | Suite | What runs | What it checks |
 | --- | --- | --- |
@@ -372,9 +372,10 @@ node identity. It covers invalid/boundary counts, topic/name errors, difficulty,
 deck refresh failure/removal/races, synchronous double-submit prevention, insertion
 Cancel lock, safe messages, actions, draft invalidation, profile changes and
 uncertain commits. `bundle.test.mjs` still checks real bundled startup and commands.
-These tests do not establish browser layout, actual tab order, screen-reader output,
-contrast, or focus behavior in Qt. CSS supplies light/dark colors and visible focus;
-all those real webview/accessibility checks remain manual gates.
+Those default tests do not establish browser layout, actual tab order or
+screen-reader output. The optional Qt smoke below additionally checks a narrow
+set of real Chromium focus/rendering behaviors. CSS supplies light/dark colors
+and visible focus; full Anki/webview/accessibility checks remain manual gates.
 
 `tests/js/form-integration.test.mjs` dispatches form submit/Retry/Cancel events into
 the actual production bundle and its engine, real OpenAI SDK adapter, actual Python
@@ -496,6 +497,141 @@ All automated provider calls use fake replies and fake keys.
 | AC-29 Secret-safe errors | Automated: fake echoed secrets scrubbed from bodies/errors, credential traceback/log checks | Live pending: real error formats; manual pending: platform diagnostics |
 | AC-30 Remove all keys | Automated: fake-vault removal across profiles, interrupted-save cleanup, deletion-failure evidence, native-dialog doubles | Manual pending: actual stores on all three OSes |
 
+## Owner verification tools (milestone 7)
+
+These tools prepare the human gates; they do not close them. No live provider
+or real OS credential store was exercised during implementation. Do not add live
+checks or the optional Qt environment to the default suites.
+
+### Opt-in live provider probe
+
+Build the browser bundle first with `npm run build`, then run from the project
+root. Both the Node driver and Python peer require explicit `--live`. Without it,
+they fail before reading a key or starting provider traffic. The environment names
+are `WAYOOM_OPENAI_API_KEY`, `WAYOOM_ANTHROPIC_API_KEY`, `WAYOOM_GOOGLE_API_KEY`,
+`WAYOOM_XAI_API_KEY`, and `WAYOOM_MISTRAL_API_KEY`.
+
+For example, in PowerShell, enter a dedicated key through a masked prompt rather
+than pasting a key into a command or file:
+
+```powershell
+$env:WAYOOM_OPENAI_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'Dedicated OpenAI key' -AsSecureString)).Password
+try {
+  node scripts/verify_provider.mjs --live --provider openai
+} finally {
+  Remove-Item Env:WAYOOM_OPENAI_API_KEY -ErrorAction SilentlyContinue
+}
+```
+
+Repeat separately with each provider/environment name. `--model ID` tests an
+explicit override; otherwise the existing live-untested defaults table is used.
+The tool does not update defaults or mark them verified automatically. It prefers
+the project `.venv` Python; `WAYOOM_TEST_PYTHON` can select a compatible interpreter.
+See `node scripts/verify_provider.mjs --help` for options.
+
+The driver loads the actual built browser bundle in a VM with no Node globals or
+environment credentials. Its SDK uses the normal BridgeClient → Python Bridge →
+ProviderProxy HTTPS path. Python alone reads the selected environment key, removes
+its environment entry, and uses the existing session-only credential service.
+Other WayOom provider-key environment variables are removed from the child
+environment. No real OS store is accessed. Collection and nonsecret state live
+in a disposable `.test-tmp/anki-test-live-*` folder, cleaned up on exit; no personal
+profile is opened. Qt collection-operation scheduling is doubled, while card
+insertion uses the real Anki backend.
+
+The probe runs a native-permit SDK connection test, dedicated AI naming plus
+three-card structured generation/insertion, then a separate one-card cancellation
+probe. A generic HTTPS observer emits only a sent-event after the real request is
+written, before reading its response. The driver cancels on that event and checks
+the canceled job and unchanged collection count. This establishes local abort/no
+insertion; it cannot guarantee upstream cancellation or stop provider billing.
+Streaming is not used. A passing probe does not prove real webview behavior, actual
+credential stores, every failure category, or educational quality.
+
+**These are billable calls.** A successful ordinary probe normally uses four
+calls; existing bounded repairs/transient failures can use up to ten total attempts.
+Adding `--quality-output .test-tmp/openai-sample.json` collects nine more five-card
+jobs: three public representative topics at each difficulty (45 review cards).
+This normally makes 13 calls total, bounded by 37 attempts including the probe.
+The file is written exclusively after all nine cases succeed; an existing output
+is never overwritten. Failed checks return nonzero. Standard output contains
+only model/provider/version and safe status metadata, never prompts, cards, auth
+headers or raw exceptions. Requested sample files intentionally contain topics
+and generated cards. Keys are never included. An interrupted process may leave
+nonsecret temporary files; it never saves the key there.
+
+`verification.test.mjs` exercises the same driver with two socket-free fixtures:
+the existing bridge peer and the actual owner peer with only its HTTPS connection
+replaced. The latter reads a fake environment key into session storage, checks its
+injection, then tests naming, insertion, cancellation and all sample cases. Each
+fixture inserts 48 cards (three probe cards plus 45 review cards), then cleans up.
+The test explicitly proves that absent opt-in cannot activate a real connection.
+No environment setting can enable live traffic in these default tests.
+
+### Human quality review
+
+After explicitly collecting a sample with the live tool, prepare an unrated file:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/quality_review.py prepare .test-tmp/openai-sample.json --output .test-tmp/openai-review.json
+# A human edits reviewer, ratings, and notes in openai-review.json.
+.\.venv\Scripts\python.exe scripts/quality_review.py report .test-tmp/openai-review.json --output .test-tmp/openai-quality-report.json
+```
+
+For each card, set strict booleans for `relevance`, `correctness`, `clarity`,
+`distinctConcept` (no redundant learning objective in the sample), and
+`difficultyMatch`. `true` means the card meets that dimension; `false` means it
+does not; `null` remains unreviewed. Check facts against reliable references and
+put concerns/references in notes. Compare cards for duplicate concepts, beyond
+the deterministic front-text check. Enter a nonblank reviewer identity. The tool
+does not invent ratings or use an AI grader.
+
+Judge difficulty against the product definitions: Beginner emphasizes essential
+facts and definitions; Intermediate emphasizes relationships and application;
+Advanced emphasizes nuanced distinctions and multi-step reasoning with concise
+answers. Difficult wording alone is not evidence of an advanced learning task.
+
+The owner-tool sampling policy requires three topics at every difficulty, with
+at least five cards per topic, **separately for each provider/model**. This is a
+documented conservative choice for NFR-08's otherwise unspecified sample size.
+The report requires at least 80% difficulty matches at each level; this is stricter
+than aggregating the AC-10 sample into one percentage. It counts concerns in all
+five dimensions. Missing ratings/reviewer/coverage or a below-threshold level
+returns exit 1; malformed input or an existing output returns exit 2. Outputs are
+never overwritten. Input is bounded and validated against the existing card contract.
+`releaseApproved` is always false: even a passing difficulty sample leaves factual
+concerns and the other release gates for the owner. No real cards have been rated yet.
+
+### Optional offscreen Qt smoke
+
+This is a separate **Windows CPython 3.12 development target**, not an add-on
+runtime dependency or default-suite requirement. Its 38 resolved aqt/Qt dependencies
+are pinned in `requirements-qt-smoke-windows.txt`; they are aqt 26.9.3's dependency
+closure and do not change the project's normal environment. Use a fresh target:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --target .test-tmp/qt-env -r requirements-qt-smoke-windows.txt
+.\.venv\Scripts\python.exe scripts/qt_smoke.py --qt-path .test-tmp/qt-env --output-dir .test-tmp/qt-smoke-evidence
+```
+
+The script loads real native settings controls, checks password masking and key
+clearing on Cancel using a fake key, then loads the real compiled form in a real
+QWebEngineView. It uses an off-the-record browser profile and disposable base,
+blocks external browser requests, and does not load the Anki main window or any
+personal profile. It validates invalid-count errors, preservation of typed topic
+and focus across 20 state pushes, inert text, and saves settled light/dark PNGs.
+The light screenshot explicitly forces light colors because the host prefers dark.
+It does not disable Chromium's sandbox/web security. `--disable-gpu` is used for
+headless rendering. The smoke stays optional; absence/failure is explicit, never
+a skipped default-suite success.
+
+Observed on Windows with aqt/Anki 26.9.3 and Qt/PyQt 6.12.0: the smoke passed and
+both screenshots were visually inspected. Chromium emitted GPU-context warnings
+but completed the checks. Native DLL access required elevated tool execution in
+this workspace sandbox. This narrow proof does not close manual docking, actual
+AnkiWebView, keyboard traversal/screen-reader, OS-store, Browser/Undo, full upgrade,
+or cross-platform gates. For those, use [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md).
+
 ## Coverage limits and remaining work
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
@@ -506,7 +642,7 @@ These tests do not certify the full software requirements specification. The fol
 - Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM, with DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations and setup/settings dialog logic still require real-platform verification.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
-The generation UI uses `ApplicationRuntime.start_configured_job()` and `add_cards()` through the guarded bridge. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel offers the form, Generate/Retry/Cancel, View cards, native Settings, recovery, and repair controls. Milestone 7's owner verification tooling remains to be built.
+The generation UI uses `ApplicationRuntime.start_configured_job()` and `add_cards()` through the guarded bridge. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel offers the form, Generate/Retry/Cancel, View cards, native Settings, recovery, and repair controls. All planned implementation milestones are complete; the owner verification tools and checklist are ready, while the named human gates remain open.
 
 The pinned integration target and packaged minimum are Anki **26.9.3**. Real Qt compatibility remains unverified. The GitHub Actions workflow runs these suites and packages artifacts on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 

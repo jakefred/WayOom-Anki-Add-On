@@ -2,8 +2,9 @@
 
 WayOom generates plain-text Basic flashcards with a provider key you supply.
 This is a **development build** with a generation form and native settings.
-Live providers, real Qt/webview behavior, and actual OS credential stores have
-not been verified. Do not treat this package as a production release.
+Live providers, full Anki UI behavior, and actual OS credential stores have not
+been verified. A limited offscreen Qt smoke passed; it does not certify those
+release gates. Do not treat this package as a production release.
 
 Requires Anki **26.9.3 or later** on desktop. That minimum is the tested backend
 target, not a claim that every later Anki version or platform has been verified.
@@ -45,6 +46,7 @@ deleted, revoke the dedicated key on the provider's key-management page:
 Removing a local key does not revoke it at the provider.
 
 Maintainers: see TESTING.md in the source repository for builds, coverage, and
-remaining release gates. Python dependency licenses are retained under
+owner verification commands, and MANUAL_VERIFICATION.md for the remaining gates.
+Python dependency licenses are retained under
 `vendor/runtime/*/*.dist-info`; bundled JavaScript licenses are included in
 `THIRD_PARTY_NOTICES.txt`.
