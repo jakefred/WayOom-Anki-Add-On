@@ -294,8 +294,19 @@ creation is inside the engine's error handler. Missing secure randomness fails
 locally before a start/provider request, clears the active state and reports the
 starting stage. The production-form integration fixture deliberately omits
 `randomUUID` while running generation through the SDK, bridge and disposable Anki.
-This fixes a reproduced compatibility failure, but does not confirm the cause of
-any specific owner's generic error without their next result.
+This fallback provides compatibility protection; the reproduced real-Qt startup
+failure below was caused by timer binding instead.
+
+Default generation timers call `globalThis.setTimeout`/`clearTimeout` through
+wrappers. Storing the native functions directly on the engine and invoking them
+as methods supplied the engine as their receiver, causing a TypeError in Qt's
+Chromium before the first start RPC. Node's timers accepted that receiver, so the
+Node integration tests missed it. The expanded Qt smoke reproduced the exact
+generic local-error message, zero provider calls and a stranded active engine
+before the fix; afterward it completed a 30-card fixture as batches of 25 and 5.
+Timer setup is also inside error handling and final cleanup always releases the
+active engine. Node regression tests enforce the browser receiver requirement
+and exercise timer setup failures.
 
 Generation errors now distinguish local TypeError/ReferenceError/RangeError from
 provider failures. Displayed diagnostic details are restricted to HTTP status
@@ -348,6 +359,16 @@ and bounded stage/progress values. Drafts remain in webview memory only; titles
 remain Python-owned. The ten-minute deadline covers generation and validation;
 once commit is dispatched, insertion finishes through the authorized atomic path.
 Late provider results are ignored even when a test caller ignores AbortSignal.
+
+Cancellation also interrupts the wait for a native failure-report acknowledgment.
+Previously that wait bypassed the engine's abort handling and could leave Cancel
+appearing ineffective until the bridge RPC timed out. An explicit cancellation
+supersedes the earlier failure category and discards native retained naming data
+as well as JavaScript drafts. The UI immediately shows Canceling, disables repeat
+clicks and keeps that feedback while a stale native running state catches up.
+Tests cover cancellation during pending start, deck naming, slow generation,
+duplicate checks, a second batch with 25 drafts retained, and failure reporting;
+late replies cannot commit. Insertion remains deliberately noncancelable.
 
 Unchanged definitive-failure retries get a new ID and a Python `retryOf` proof only
 when session, normalized request, provider, model, and credential reference match.
@@ -459,10 +480,10 @@ With the intended Python active, `npm run package` is equivalent. The command
 always rebuilds `web/dist/panel.js`; it does not download anything. It verifies
 all pinned wheel SHA-256 hashes and packages their runtime contents directly,
 without trusting an existing `vendor/runtime` directory. End users need none of
-the build tools. The output is `dist/wayoom-0.1.5.ankiaddon` and a `.sha256` sidecar;
+the build tools. The output is `dist/wayoom-0.1.7.ankiaddon` and a `.sha256` sidecar;
 both are ignored by Git. `--output PATH` selects another artifact destination.
 
-The root manifest uses stable package identity `wayoom`, human version `0.1.5`,
+The root manifest uses stable package identity `wayoom`, human version `0.1.7`,
 and `min_point_version: 260903`, meaning Anki **26.9.3**. See Anki's
 [manifest parser](https://github.com/ankitects/anki/blob/main/qt/aqt/addons.py) and
 [version encoding](https://github.com/ankitects/anki/blob/main/pylib/anki/utils.py).
@@ -685,6 +706,15 @@ stub. A native mouse click runs the bundled SDK connection test through the real
 Python Bridge, with only provider transport replaced by a socket-free fixture.
 It checks verification, the visible success banner, and the native Settings
 command. Exceptions in Qt callbacks fail the smoke rather than entering a debugger.
+It also submits a valid 30-card request through the compiled production form and
+generation engine, with real browser timers and in-memory provider/collection
+fixtures, checking both batches, completion text and cleared active state. This
+is separate from the real SDK/Python-bridge connection-test check above; the
+30-card Qt fixture does not contact providers or insert into an Anki collection.
+The same real-Qt fixture clicks the actual Cancel button during a held provider
+promise, checks immediate feedback, releases a late response and verifies zero
+commits, cleared drafts and re-enabled Generate. It then injects a startup timer
+failure and verifies no stale active engine or Cancel button remains.
 It uses an off-the-record browser profile and disposable base,
 blocks external browser requests, and does not load the Anki main window or any
 personal profile. It validates invalid-count errors, preservation of typed topic

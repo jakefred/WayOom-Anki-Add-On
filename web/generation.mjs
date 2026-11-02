@@ -28,7 +28,9 @@ export class GenerationError extends BridgeError {
 
 export class GenerationEngine {
   constructor(client, { call = createStructuredCaller(client), onProgress = () => {},
-    now = () => globalThis.performance.now(), setTimer = setTimeout, clearTimer = clearTimeout,
+    now = () => globalThis.performance.now(),
+    setTimer = (callback, delay) => globalThis.setTimeout(callback, delay),
+    clearTimer = timer => globalThis.clearTimeout(timer),
     token = createStartToken, timeout = 600000 } = {}) {
     Object.assign(this, { client, call, onProgress, now, setTimer, clearTimer, token, timeout });
     this.active = null;
@@ -65,9 +67,11 @@ export class GenerationEngine {
   cancel() {
     const active = this.active;
     if (!active || active.stage === 'adding') return false;
-    this.discard({ notify: false });
+    this.discard();
+    // A user cancellation also supersedes a failure notification being settled.
+    active.reason = 'canceled';
     this._stop('canceled');
-    this.client.rpc('cancel-start', { startToken: active.startToken }).catch(() => {});
+    if (active.startToken) this.client.rpc('cancel-start', { startToken: active.startToken }).catch(() => {});
     return true;
   }
 
@@ -202,8 +206,9 @@ export class GenerationEngine {
     this.active = active;
     this.lastFailure = null;
     const deadlineReached = () => { if (this.active === active) this._stop('timeout'); };
-    let timer = this.setTimer(deadlineReached, this.timeout);
+    let timer;
     try {
+      timer = this.setTimer(deadlineReached, this.timeout);
       // Start cancellation is token-scoped so a late start response cannot strand a job.
       active.startToken = this.token();
       const job = await this._wait(this.client.rpc('start', { request: parsed.data, startToken: active.startToken }), active);
@@ -247,7 +252,9 @@ export class GenerationEngine {
         if (!status || ['adding', 'generating', 'validating'].includes(status.state)
             || ['pending', 'uncertain'].includes(status.commitState)) category = 'uncertain';
       } else if (active.requestId && category !== 'canceled') {
-        await this.client.rpc('fail', { requestId: active.requestId, category, stage: active.stage }).catch(() => {});
+        // Reporting a failure must not trap the UI while Cancel waits for a reply.
+        await this._wait(this.client.rpc('fail', { requestId: active.requestId, category, stage: active.stage }), active).catch(() => {});
+        category = active.reason ?? category;
       } else if (active.startToken) {
         this.client.rpc('cancel-start', { startToken: active.startToken }).catch(() => {});
       }
@@ -257,8 +264,11 @@ export class GenerationEngine {
         exhausted: failure.exhausted, retryable: category !== 'uncertain' && category !== 'canceled' };
       throw failure;
     } finally {
-      this.clearTimer(timer);
-      if (this.active === active) this.active = null;
+      try {
+        if (timer !== undefined) this.clearTimer(timer);
+      } finally {
+        if (this.active === active) this.active = null;
+      }
     }
   }
 }

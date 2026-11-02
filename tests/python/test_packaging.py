@@ -64,7 +64,7 @@ class PackagingTests(unittest.TestCase):
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(manifest["package"], "wayoom")
             self.assertEqual(manifest["min_point_version"], 260903)
-            self.assertEqual(manifest["human_version"], "0.1.5")
+            self.assertEqual(manifest["human_version"], "0.1.7")
             self.assertIn(b"Remove all keys", archive.read("README.md"))
             notices = archive.read("THIRD_PARTY_NOTICES.txt").decode()
             self.assertIn("@ai-sdk/provider-utils 5.0.72", notices)

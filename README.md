@@ -28,11 +28,13 @@ Open WayOom from Anki's Tools menu. Choose
 an existing deck or Create new deck, enter a topic and 1–100 cards, select a
 difficulty, then Generate. Leave a new deck's name blank for AI naming.
 Cancel is available before addition begins; use Anki Undo after completion.
+Cancel shows immediate feedback, discards retained drafts, and ignores late
+generation results. It remains responsive while a failed request is being reported.
 After a generation failure, Retry with unchanged inputs reuses validated drafts.
 Changing any input discards those drafts. View cards opens the completed batch.
 
 For a disposable test installation, use Anki's **Tools → Add-ons → Install from
-file**, select `wayoom-0.1.5.ankiaddon`, and restart Anki. The package identity is
+file**, select `wayoom-0.1.7.ankiaddon`, and restart Anki. The package identity is
 `wayoom`; use the same identity for upgrades. A source folder installed under a
 different name is a separate installation and will not share settings or keys.
 

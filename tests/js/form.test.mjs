@@ -108,6 +108,27 @@ test('failures preserve raw form fields, hide raw errors, show retained Retry an
   }
 });
 
+test('Cancel shows immediate feedback while native state catches up, then releases controls', async () => {
+  const waiting = deferred();
+  const h = await harness({run: () => waiting.promise});
+  const pending = h.panel.submit();
+  h.engine.active = {stage:'cards'};
+  h.engine.cancel = () => { h.engine.active.reason = 'canceled'; };
+  h.elements['#cancel'].click();
+  assert.equal(h.elements['#state-label'].textContent, 'Canceling');
+  assert.equal(h.elements['#cancel'].disabled, true);
+  h.panel.setState({...ready,state:'generating',canGenerate:false});
+  h.engine.active = null;
+  waiting.reject(Object.assign(new Error(), {category:'canceled',stage:'cards'}));
+  await pending;
+  assert.equal(h.elements['#state-label'].textContent, 'Canceling');
+  h.panel.setState({...ready,state:'canceled'});
+  assert.equal(h.elements['#state-label'].textContent, 'Canceled');
+  assert.equal(h.elements['#cancel'].hidden, true);
+  assert.equal(h.elements['#generate'].disabled, false);
+  assert.equal(h.elements['#settings'].disabled, false);
+});
+
 test('local startup errors and safe HTTP details are visible without raw exception text', async () => {
   const h = await harness({run: () => { throw new TypeError('private-topic-or-key'); }});
   await h.panel.submit();

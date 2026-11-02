@@ -182,6 +182,67 @@ test('cancel rejects a provider that ignores AbortSignal; a late response cannot
   assert.equal(h.state, 'canceled');
 });
 
+test('cancel remains responsive while failure reporting is awaiting a native reply', async () => {
+  const reporting = deferred();
+  const h = harness({script: () => { throw new BridgeError('authentication'); }});
+  const rpc = h.client.rpc;
+  let waiting = false, settled = false;
+  h.client.rpc = (op, payload) => {
+    const result = rpc(op, payload);
+    if (op === 'fail') { waiting = true; return reporting.promise; }
+    return result;
+  };
+  const result = h.engine.run(form()).catch(error => { settled = true; return error; });
+  await tickUntil(() => waiting);
+  try {
+    assert.equal(h.engine.cancel(), true);
+    await new Promise(done => setImmediate(done));
+    assert.equal(settled, true, 'Cancel must not wait for the failure-report RPC');
+    assert.equal(h.engine.active, null);
+    assert.equal((await result).category, 'canceled');
+    assert.equal(h.engine.retainedCount, 0);
+    assert.equal(h.canRetain, false, 'Cancel also discards any native retained deck title');
+  } finally {
+    reporting.resolve({});
+    await result;
+  }
+  assert.equal(h.commits.length, 0);
+});
+
+for (const phase of ['naming', 'duplicate-check', 'second-batch']) {
+  test(`cancel during ${phase} discards drafts and ignores late results`, async () => {
+    const waiting = deferred();
+    let entered = false;
+    const h = harness({script: args => {
+      if (phase === 'naming' && args.stage === 'naming' || phase === 'second-batch' && args.batch === 1) {
+        entered = true;
+        return waiting.promise;
+      }
+      return {cards:Array.from({length:args.count}, (_, i) => card(`Question ${i}`))};
+    }});
+    const rpc = h.client.rpc;
+    if (phase === 'duplicate-check') h.client.rpc = (op, payload) => {
+      if (op === 'duplicates' && payload.fronts.length) { entered = true; return waiting.promise; }
+      return rpc(op, payload);
+    };
+    const pending = h.engine.run(form({cardCount:30,
+      ...(phase === 'naming' ? {destination:{mode:'new',name:null}} : {})}));
+    const rejected = assert.rejects(pending, error => error.category === 'canceled');
+    await tickUntil(() => entered);
+    if (phase === 'second-batch') assert.equal(h.engine.retainedCount, 25);
+    h.engine.cancel();
+    await rejected;
+    waiting.resolve(phase === 'naming' ? {deckName:'Late title'}
+      : phase === 'duplicate-check' ? {conflicts:[],avoidFronts:[]}
+        : {cards:Array.from({length:5}, (_, i) => card(`Late ${i}`))});
+    await new Promise(done => setImmediate(done));
+    assert.equal(h.engine.active, null);
+    assert.equal(h.engine.retainedCount, 0);
+    assert.equal(h.commits.length, 0);
+    assert.equal(h.canRetain, false);
+  });
+}
+
 test('overall timeout preserves earlier drafts and stops an unresponsive later batch', async () => {
   let now = 0; let timer;
   const waiting = deferred();
@@ -216,6 +277,34 @@ test('missing randomUUID falls back to secure bytes; missing crypto fails locall
   assert.equal(h.messages.length, 0);
   assert.equal(h.calls.length, 0);
   assert.equal(h.engine.active, null);
+});
+
+test('default timers use the global receiver through a complete 30-card generation', async t => {
+  const schedule = globalThis.setTimeout, clear = globalThis.clearTimeout;
+  let scheduled = 0, cleared = 0;
+  t.mock.method(globalThis, 'setTimeout', function (...args) {
+    assert.equal(this, globalThis, 'browser setTimeout requires its global receiver');
+    scheduled++;
+    return schedule(...args);
+  });
+  t.mock.method(globalThis, 'clearTimeout', function (...args) {
+    assert.equal(this, globalThis, 'browser clearTimeout requires its global receiver');
+    cleared++;
+    return clear(...args);
+  });
+  const h = harness();
+  const result = await h.engine.run(form({cardCount:30}));
+  assert.equal(result.outcome.count, 30);
+  assert.deepEqual(h.calls.map(call => call.count), [25, 5]);
+  assert.ok(scheduled >= 2 && cleared >= 2);
+  assert.equal(h.engine.active, null);
+});
+
+test('timer setup failure is labeled starting and does not strand an active job', async () => {
+  const h = harness({options:{setTimer: () => { throw new TypeError('fixture timer failure'); }}});
+  await assert.rejects(h.engine.run(form()), error => error.category === 'local' && error.stage === 'starting');
+  assert.equal(h.engine.active, null);
+  assert.equal(h.messages.length, 0);
 });
 
 test('HTTP diagnostic survives retries and engine wrapping without raw provider content', async () => {

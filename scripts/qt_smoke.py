@@ -212,6 +212,7 @@ document.documentElement.classList.remove('night-mode');
             script = '''
 const topic = document.querySelector('#topic');
 topic.value = 'Typing survives';
+topic.dispatchEvent(new Event('input', {bubbles:true}));
 document.querySelector('#destination').value = '1';
 document.querySelector('#card-count').value = '0';
 document.querySelector('#generation-form').requestSubmit();
@@ -224,6 +225,91 @@ JSON.stringify({engine:typeof window.wayoomGeneration.run,topic:topic.value,
   inert:document.querySelector('#message').textContent,settings:typeof pycmd === 'function'});
 '''.replace("STATE", json.dumps(state))
             page.runJavaScript(script, checked)
+
+        def exercise_generation():
+            # Use the compiled production form/engine and real Qt browser timers.
+            # This in-memory fixture substitutes collection/network operations only.
+            page.runJavaScript('''
+window.qtGenerationEvidence = null;
+(async () => {
+  const batches = [];
+  let nextCard = 0, committed = 0;
+  const client = {async rpc(op, payload) {
+    if (op === 'start') return {request:{...payload.request,requestId:'qt-job'},
+      settings:{modelId:'fixture'},sessionId:'qt-session',remainingSeconds:60};
+    if (op === 'duplicates') return {conflicts:[],avoidFronts:[]};
+    if (op === 'commit') {
+      committed = payload.result.cards.length;
+      return {state:'committed',outcome:{count:committed,deckName:'Fixture deck'}};
+    }
+    return {};
+  }};
+  const panel = window.wayoomPanel;
+  panel.engine = new WayOomPanel.GenerationEngine(client, {
+    onProgress: progress => panel.setProgress(progress),
+    call: async ({count}) => { batches.push(count); return {cards:Array.from({length:count},
+      () => ({front:`Fixture question ${++nextCard}`,back:'Fixture answer'}))}; },
+  });
+  document.querySelector('#destination').value = '1';
+  document.querySelector('#topic').value = 'Korean News words';
+  document.querySelector('#difficulty').value = 'beginner';
+  document.querySelector('#card-count').value = '30';
+  await panel.submit();
+  const completed = {committed,batches:[...batches],active:panel.engine.active !== null,
+    message:document.querySelector('#message').textContent};
+  while (panel.loading) await new Promise(resolve => setTimeout(resolve, 0));
+  committed = 0;
+  let release, entered = false;
+  panel.engine = new WayOomPanel.GenerationEngine(client, {
+    onProgress: progress => panel.setProgress(progress),
+    call: () => { entered = true; return new Promise(resolve => {release = resolve;}); },
+  });
+  const pending = panel.submit();
+  while (!entered) await new Promise(resolve => setTimeout(resolve, 0));
+  document.querySelector('#cancel').click();
+  const cancelFeedback = document.querySelector('#state-label').textContent;
+  const repeatCancelDisabled = document.querySelector('#cancel').disabled;
+  await pending;
+  release({cards:[{front:'Late response',back:'Must not be added'}]});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  completed.cancel = {feedback:cancelFeedback,repeatCancelDisabled,committed,
+    active:panel.engine.active !== null,retained:panel.engine.retainedCount,
+    label:document.querySelector('#state-label').textContent,
+    generateEnabled:!document.querySelector('#generate').disabled};
+  panel.engine = new WayOomPanel.GenerationEngine(client, {
+    setTimer: () => {throw new TypeError('Synthetic timer failure');},
+  });
+  await panel.submit();
+  completed.startupFailure = {active:panel.engine.active !== null,
+    cancelHidden:document.querySelector('#cancel').hidden,
+    generateEnabled:!document.querySelector('#generate').disabled,
+    message:document.querySelector('#message').textContent};
+  window.qtGenerationEvidence = completed;
+})().catch(error => { window.qtGenerationEvidence = {error:error.name}; });
+''')
+            QTimer.singleShot(50, poll_generation)
+
+        def poll_generation():
+            def complete(value):
+                if not value or value == "null":
+                    QTimer.singleShot(50, poll_generation)
+                    return
+                evidence = json.loads(value)
+                assert evidence.get("committed") == 30, evidence
+                assert evidence["batches"] == [25, 5], evidence
+                assert evidence["active"] is False, evidence
+                assert evidence["message"] == "Added 30 cards to Fixture deck", evidence
+                assert evidence["cancel"] == {"feedback":"Canceling", "repeatCancelDisabled":True,
+                    "committed":0, "active":False, "retained":0, "label":"Canceled", "generateEnabled":True}, evidence
+                result["chromiumProductionFormThirtyCards"] = True
+                result["chromiumCancelButtonAndLateResponse"] = True
+                assert evidence["startupFailure"]["active"] is False, evidence
+                assert evidence["startupFailure"]["cancelHidden"] is True, evidence
+                assert evidence["startupFailure"]["generateEnabled"] is True, evidence
+                assert "Starting failed" in evidence["startupFailure"]["message"], evidence
+                result["chromiumStartupFailureReleasesControls"] = True
+                QTimer.singleShot(50, exercise)
+            page.runJavaScript("JSON.stringify(window.qtGenerationEvidence)", complete)
 
         connected_dialog = None
         def test_complete(category):
@@ -240,7 +326,7 @@ JSON.stringify({engine:typeof window.wayoomGeneration.run,topic:topic.value,
             if args.output_dir:
                 connected_dialog.grab().save(str(args.output_dir / "connected-test-success.png"))
             connected_dialog.reject()
-            QTimer.singleShot(300, exercise)
+            QTimer.singleShot(300, exercise_generation)
 
         def begin_connected_test():
             nonlocal connected_dialog

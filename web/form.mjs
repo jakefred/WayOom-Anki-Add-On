@@ -206,6 +206,8 @@ export class GenerationPanel {
   render() {
     const adding = this.engine.active?.stage === 'adding' || this.state.state === 'adding' || this.progress?.stage === 'adding';
     const busy = this.running || !!this.engine.active || busyStates.has(this.state.state);
+    const canceling = !adding && (this.engine.active?.reason === 'canceled'
+      || busy && this.terminal?.state === 'canceled');
     const blockedAction = ['inspect', 'reopen-profile', 'repair-note-type'].includes(this.state.action);
     const authoritative = blockedAction || ['repairing', 'recovering', 'setup'].includes(this.state.state)
       || !this.running && busyStates.has(this.state.state)
@@ -224,6 +226,7 @@ export class GenerationPanel {
           : `${stageNames[progress?.stage] ?? 'Generating'}${progress?.stage !== 'naming' && progress?.cardCount
             ? ` — batch ${progress.batch + 1} of ${Math.ceil(progress.cardCount / 25)}; ${progress.acceptedCount} validated drafts` : ''}`;
     }
+    if (canceling) { label = 'Canceling'; message = 'Cancel requested. Waiting for the current operation to stop.'; }
     if (this.closed) { label = 'Canceled'; message = 'This profile has closed.'; }
     this.text('state-label', label);
     this.text('message', message);
@@ -236,7 +239,7 @@ export class GenerationPanel {
     this.get('settings').disabled = busy || this.closed;
     this.get('refresh-decks').disabled = busy || this.loading || this.closed || !this.state.profileReady;
     this.get('cancel').hidden = !busy;
-    this.get('cancel').disabled = adding || this.closed;
+    this.get('cancel').disabled = adding || canceling || this.closed;
     this.get('view-cards').hidden = !display.canView || busy || this.closed;
     this.get('repair-note-type').hidden = this.state.action !== 'repair-note-type';
     this.get('repair-note-type').disabled = busy || this.closed || this.state.state === 'repairing';

@@ -53,6 +53,9 @@ explicit live checks. Do not weaken browser security to get a pass.
   generation/review and reopen it; the job continues and current state returns.
   Cancel during naming/cards, then switch profiles during another job; late
   responses must insert nothing. Adding disables Cancel and explains finishing.
+  Canceling feedback appears immediately; after cancellation, Generate and
+  Settings recover and retained drafts are cleared. Check cancellation after a
+  first batch finishes and while a failed request is being reported.
   **AC-13/14/25.**
 - [ ] Trigger a definitive mid-generation failure using a disposable setup.
   Inputs remain. Retry unchanged rechecks retained drafts and requests only the
