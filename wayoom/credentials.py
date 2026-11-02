@@ -138,7 +138,8 @@ class CredentialService:
                 active = available[0]
             elif active not in available:
                 active = None
-            return {"providers": providers, "activeProviderId": active, "setupRequired": active is None}
+            verified = active is not None and providers[active]["connectionStatus"] == "verified"
+            return {"providers": providers, "activeProviderId": active, "setupRequired": not verified}
 
     def save_key(self, store, provider, key, *, session_only=False, model_id=None):
         self._check_provider(provider)

@@ -77,13 +77,17 @@ def profile_opened() -> None:
     status_timer.start()
     menu_action.setEnabled(True)
     menu_action.setChecked(visible)
-    if not runtime.store.settings().get("setupComplete", False):
-        show_settings()
+    if runtime.configuration["setupRequired"]:
+        show_settings(welcome=True)
 
 
-def show_settings():
+def show_settings(welcome=False):
     global settings_dialog
-    if runtime.store is None or settings_dialog is not None:
+    if runtime.store is None:
+        return
+    if settings_dialog is not None:
+        settings_dialog.raise_()
+        settings_dialog.activateWindow()
         return
     from .wayoom.settings import SettingsController
     from .wayoom.settings_dialog import SettingsDialog
@@ -108,24 +112,58 @@ def show_settings():
             raise CredentialError("The panel is still loading. Try again shortly.")
         return provider_bridge.begin_test(provider, callback)
 
+    def load_models(provider, callback):
+        from .wayoom.catalog import ModelCatalog
+        from .wayoom.proxy import Transfer
+        guard()
+        reference = store.settings().get("providers", {}).get(provider, {}).get("credentialRef")
+        transfer = Transfer()
+        catalog = ModelCatalog(runtime.credentials)
+        def complete(future):
+            if runtime.store is not store or runtime._epoch != epoch:
+                return
+            if store.settings().get("providers", {}).get(provider, {}).get("credentialRef") != reference:
+                return
+            try:
+                result = future.result()
+            except Exception:
+                result = {"error": "provider"}
+            if result.get("error") == "authentication":
+                providers = store.settings()["providers"]
+                providers[provider]["connectionStatus"] = "untested"
+                providers[provider].pop("verifiedModelId", None)
+                store.update_settings(providers=providers)
+                changed()
+            callback(result)
+        mw.taskman.run_in_background(lambda: catalog.fetch(store, provider, reference, transfer),
+                                     complete, uses_collection=False)
+        return transfer.cancel
+
     dialog = SettingsDialog(mw, SettingsController(runtime.credentials, store, guard), changed,
-                            test_connection=test_connection)
+                            test_connection=test_connection, load_models=load_models, welcome=welcome)
     settings_dialog = dialog
-    try:
-        dialog.exec()
-    finally:
-        if provider_bridge:
-            provider_bridge.cancel_tests()
+    bridge = provider_bridge
+    def finished(_result):
+        global settings_dialog
+        if bridge:
+            bridge.cancel_tests()
         dialog.clear_keys()
         dialog.deleteLater()
-        settings_dialog = None
+        if settings_dialog is dialog:
+            settings_dialog = None
         changed()
+    dialog.finished.connect(finished)
+    # Avoid a nested event loop inside a webview bridge callback.
+    dialog.open()
 
 
 def refresh_status() -> None:
     if provider_bridge is not None:
         provider_bridge.poll()
     if sidebar is not None:
+        if provider_bridge is not None and not provider_bridge.client_ready:
+            # Anki queues eval until QWebChannel has installed pycmd (domDone).
+            sidebar.widget().eval("window.wayoomConnect && window.wayoomConnect();")
         state = json.dumps(runtime.panel_state(), ensure_ascii=True)
         sidebar.widget().eval(f"window.wayoomSetState && window.wayoomSetState({state});")
 

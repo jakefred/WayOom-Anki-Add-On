@@ -21,6 +21,9 @@ class GenerationControlTests(unittest.TestCase):
             self.runtime.open_profile("fixture", object())
             recovery.call_args.kwargs["on_complete"]({})
         self.credentials.save_key(self.runtime.store, "openai", "fake-key", session_only=True)
+        providers = self.runtime.store.settings()["providers"]
+        providers["openai"].update(connectionStatus="verified", verifiedModelId=DEFAULT_MODELS["openai"]["modelId"])
+        self.runtime.store.update_settings(providers=providers)
         self.request = {"requestId": "ignored", "destination": {"mode": "new", "name": None},
                         "cardCount": 100, "topic": "Biology", "difficulty": "intermediate", "providerId": "openai"}
         self.messages = []
@@ -102,6 +105,7 @@ class GenerationControlTests(unittest.TestCase):
         self.runtime.fail_generation(rid, "network", "cards")
         providers = self.runtime.store.settings()["providers"]
         providers["openai"]["modelId"] = "custom-model"
+        providers["openai"]["verifiedModelId"] = "custom-model"  # model verification is doubled for this retry test
         self.runtime.store.update_settings(providers=providers)
         retry = self.runtime.start_configured_job(self.request)
         self.assertIsNone(retry["retryOf"])

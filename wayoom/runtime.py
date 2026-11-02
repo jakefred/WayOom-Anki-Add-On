@@ -78,7 +78,7 @@ class ApplicationRuntime:
         self.refresh_configuration()
         active = self.configuration["activeProviderId"]
         if self.configuration["setupRequired"] or not active:
-            raise CredentialError("Setup required: configure an available provider key")
+            raise CredentialError("Setup required: verify a provider key and selected model in Settings")
         config = self.store.settings()["providers"][active]
         settings = {key: config[key] for key in ("credentialRef", "modelId") if key in config}
         settings["modelId"] = model_id(active, config)
@@ -220,7 +220,8 @@ class ApplicationRuntime:
                             and state["state"] not in {"generating", "validating", "adding"}
                             and state.get("action") not in {"inspect", "reopen-profile", "repair-note-type"})
         if state["state"] == "ready" and self.configuration["setupRequired"]:
-            state["message"] = "Setup required. Open Settings to configure a provider."
+            state["state"] = "setup"
+            state["message"] = "Setup required. Open Settings to connect a provider and verify a model."
         return {**state, "setupRequired": self.configuration["setupRequired"],
                 "configuredProvider": self.configuration["activeProviderId"],
                 "profileEpoch": self._epoch, "profileReady": self.profile is not None and self.ready,

@@ -25,7 +25,9 @@ test('production form events → real engine/SDK/bridge → disposable Anki; dou
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
     TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response, AbortController, AbortSignal,
-    ReadableStream, TransformStream, setTimeout, clearTimeout, crypto: webcrypto, performance, btoa, atob,
+    // Older embedded browsers can expose getRandomValues without randomUUID.
+    ReadableStream, TransformStream, setTimeout, clearTimeout,
+    crypto: {getRandomValues: bytes => webcrypto.getRandomValues(bytes)}, performance, btoa, atob,
   });
   const lines = createInterface({ input: child.stdout });
   lines.on('line', line => { const message = JSON.parse(line); received.push(message); context.window.wayoomBridge.receive(message); });

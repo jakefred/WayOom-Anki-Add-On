@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BridgeClient, BridgeError } from '../../web/bridge.mjs';
-import { classifyFailure, failureMessages } from '../../web/failures.mjs';
+import { classifyFailure, failureMessages, failureDiagnostic } from '../../web/failures.mjs';
 import { APICallError, NoObjectGeneratedError } from 'ai';
 
 test('bridge fetch forwards a serialized request and resolves a buffered response', async () => {
@@ -59,4 +59,18 @@ test('shared classifier keeps auth, quota, rate, model, timeout, refusal and mal
   assert.equal(classifyFailure(new NoObjectGeneratedError({ message: 'Malformed' })), 'malformed');
   assert.equal(classifyFailure({ finishReason: 'content-filter' }), 'refusal');
   assert.ok(!Object.values(failureMessages).join().includes('Do not display raw details'));
+});
+
+test('diagnostics expose only fixed labels and status, even through wrappers and cyclic causes', () => {
+  const error = new APICallError({message: 'private-secret', url: 'https://example.invalid',
+    requestBodyValues: {}, statusCode: 400,
+    data: {error: {code: 'private-secret', param: 'private-topic', type: 'invalid_request_error'}}});
+  const wrapper = new BridgeError('provider', failureDiagnostic(error));
+  wrapper.cause = wrapper;
+  assert.match(failureDiagnostic(wrapper), /HTTP 400/);
+  assert.match(failureDiagnostic(wrapper), /invalid_request_error/);
+  assert.doesNotMatch(failureDiagnostic(wrapper), /private/);
+  assert.equal(failureDiagnostic({name:'private-secret', diagnostic:'private-topic'}), '');
+  assert.equal(classifyFailure(new TypeError('private-secret')), 'local');
+  assert.equal(failureDiagnostic(new TypeError('private-secret')), 'TypeError');
 });

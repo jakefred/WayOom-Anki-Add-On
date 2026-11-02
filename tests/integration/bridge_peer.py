@@ -18,6 +18,7 @@ from wayoom.bridge import Bridge
 from wayoom.credentials import CredentialService
 from wayoom.proxy import ProviderProxy
 from wayoom.runtime import ApplicationRuntime
+from wayoom.models import model_id
 
 FAKE_KEY = "fake-python-only-credential-123"
 records = []
@@ -174,6 +175,9 @@ with tempfile.TemporaryDirectory(prefix="anki-test-engine-" if "--generation" in
             provider = message["payload"]["provider"]
             credentials.save_key(runtime.store, provider, FAKE_KEY, session_only=True)
             credentials.select_provider(runtime.store, provider)
+            providers = runtime.store.settings()["providers"]
+            providers[provider].update(connectionStatus="verified", verifiedModelId=model_id(provider, providers[provider]))
+            runtime.store.update_settings(providers=providers)  # native setup is doubled in generation-only scenarios
             engine_script[:] = message["payload"].get("script", [])
             mode.update(generation=True)
             destination = message["payload"].get("destination", {"mode": "new", "name": None})
@@ -215,6 +219,9 @@ with tempfile.TemporaryDirectory(prefix="anki-test-engine-" if "--generation" in
             model = {"openai": "gpt-test", "anthropic": "claude-test", "google": "gemini-test", "xai": "grok-test", "mistral": "mistral-test"}[provider]
             credentials.save_key(runtime.store, provider, FAKE_KEY, session_only=True, model_id=model)
             credentials.select_provider(runtime.store, provider)
+            providers = runtime.store.settings()["providers"]
+            providers[provider].update(connectionStatus="verified", verifiedModelId=model)
+            runtime.store.update_settings(providers=providers)
             request = {"requestId": "ignored", "destination": {"mode": "existing", "deckId": 1}, "cardCount": 1,
                        "topic": "Fixture", "difficulty": "beginner", "providerId": provider}
             bridge.reply(message["id"], runtime.start_configured_job(request))

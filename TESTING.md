@@ -142,19 +142,46 @@ ABIs. Windows and macOS use native ctypes backends; Linux uses Secret Service.
 No configurable plaintext backend is selected. Actual OS-store behavior on each
 platform is still a human verification gate.
 
-First-run setup and Settings are native modal Qt dialogs, with masked blank key
-inputs, status labels, provider selection, model overrides, remove controls,
-billing/privacy/storage disclosures, and provider key-management links. Saving
-a key marks it untested. Connection-test buttons require an available saved key
-and an effective model ID from an override or the defaults table. The Qt action issues a single-use permit and asks
-the webview SDK to make the call. Unsaved key/model changes must be saved first.
-Verification is bound to `verifiedModelId`, so changing a default does not label
-an untested model as verified. Native model inputs remain blank for the default
-and show its ID in the placeholder, labeled live-untested.
-Saving changes across several providers is sequential; after a partial failure,
-the dialog clears key inputs, refreshes saved status, and reports that some changes
-may already have been saved. Cancel discards unsaved input. Only one settings
-dialog can be open; profile close rejects it and clears inputs.
+First-run setup shows a WayOom title with Set up now and Skip for now. The native
+dialog uses a masked key input, company picker, live model dropdown, inline status,
+and explicit Connect, Test, and Done steps. Key prefixes provide local company
+hints; ambiguous formats require a company selection and are never tried against
+multiple services. New-key placeholders do not imply an existing saved key.
+Enter advances focus without accepting the dialog; an open dropdown handles its
+own selection. Done and the Python generation boundary require verification of
+the effective model with the current key. Saving a key alone remains unverified.
+Existing configured providers remain selectable individually. A replacement key
+or changed model invalidates verification. Close/Skip clears unsaved key input;
+the saved-key notice remains visible with its company and storage location.
+Use a different key opens a masked replacement field; Keep saved key discards
+unsaved replacement input. A fixed, prominent status banner above the scrolling
+form shows test progress and labeled success/failure, with focus kept on feedback
+instead of jumping to Close when Test becomes disabled.
+Keys explicitly connected earlier remain saved. Profile close cancels discovery,
+rejects the dialog, and clears input. Modal `open()` with a finished callback avoids
+a nested `exec()` inside the webview bridge and permits reliable reopening.
+
+`wayoom/catalog.py` implements native metadata discovery, separate from the
+unchanged SDK generation proxy. Native actions run bounded GET requests off the
+UI/collection thread, using only the selected company's fixed HTTPS host/path.
+There are at most three pages, 1 MiB per response and a 30-second overall deadline;
+there are no redirects or retries. Only normalized model metadata reaches Qt.
+Provider replies are scrubbed and exceptions use fixed categories. Cancel/profile
+switch discards late results. Catalog listing does not mark a generation model
+verified: Test still uses the real SDK/bridge and a single-use native permit.
+The dropdown filters text models using API capabilities where provided and model
+families otherwise. Its selection must pass the structured generation test.
+Token limits are shown only when returned by the provider; pricing is not inferred.
+
+Catalog routes and response contracts follow the official
+[OpenAI model list](https://developers.openai.com/api/reference/resources/models/methods/list),
+[Anthropic model list](https://platform.claude.com/docs/en/api/models/list),
+[Gemini model list](https://ai.google.dev/api/models?hl=en),
+[xAI language models](https://docs.x.ai/developers/rest-api-reference/inference/models), and
+[Mistral model list](https://docs.mistral.ai/api/endpoint/models).
+Offline tests cover all five with fake keys/responses, routing, filtering,
+pagination, cancellation, safe failures and secret exclusion. Live catalogs and
+actual account permissions still require owner checks.
 
 Secrets are kept in the OS store or explicitly in session memory, never settings
 or webview state. Persisted references are immutable per replacement; old references
@@ -260,6 +287,29 @@ HTTPS routes to local HTTP; production has no insecure transport switch. It send
 It does not test TLS, real provider behavior, Qt, or a real credential store.
 
 ## Generation engine and retained retries
+
+Start tokens use browser `crypto.randomUUID()` when available, with a secure
+`getRandomValues()` fallback for embedded browsers lacking that method. Token
+creation is inside the engine's error handler. Missing secure randomness fails
+locally before a start/provider request, clears the active state and reports the
+starting stage. The production-form integration fixture deliberately omits
+`randomUUID` while running generation through the SDK, bridge and disposable Anki.
+This fixes a reproduced compatibility failure, but does not confirm the cause of
+any specific owner's generic error without their next result.
+
+Generation errors now distinguish local TypeError/ReferenceError/RangeError from
+provider failures. Displayed diagnostic details are restricted to HTTP status
+numbers and a fixed allowlist of SDK error names, API error codes and parameter
+names. Raw exception messages, bodies, headers and arbitrary provider fields are
+never displayed. These labels survive SDK wrappers, engine retries and the form;
+they are not persisted as a raw-error log. Regression tests verify this exclusion.
+
+Card-generation prompts in `web/generation-provider.mjs` include three basic
+input/output examples covering arithmetic, plant parts and capital cities. They
+demonstrate valid JSON and focused question/answer pairs; the explicitly labeled actual request
+retains its own topic, difficulty, language, batch count and avoid list. Naming
+prompts do not include the card example. This format guidance does not diagnose
+or resolve an otherwise unclassified provider error.
 
 The browser bundle exposes `window.wayoomGeneration`, an instance of
 `GenerationEngine`. The form calls `run(request)`, `cancel()`, and
@@ -409,10 +459,10 @@ With the intended Python active, `npm run package` is equivalent. The command
 always rebuilds `web/dist/panel.js`; it does not download anything. It verifies
 all pinned wheel SHA-256 hashes and packages their runtime contents directly,
 without trusting an existing `vendor/runtime` directory. End users need none of
-the build tools. The output is `dist/wayoom-0.1.0.ankiaddon` and a `.sha256` sidecar;
+the build tools. The output is `dist/wayoom-0.1.5.ankiaddon` and a `.sha256` sidecar;
 both are ignored by Git. `--output PATH` selects another artifact destination.
 
-The root manifest uses stable package identity `wayoom`, human version `0.1.0`,
+The root manifest uses stable package identity `wayoom`, human version `0.1.5`,
 and `min_point_version: 260903`, meaning Anki **26.9.3**. See Anki's
 [manifest parser](https://github.com/ankitects/anki/blob/main/qt/aqt/addons.py) and
 [version encoding](https://github.com/ankitects/anki/blob/main/pylib/anki/utils.py).
@@ -617,19 +667,37 @@ closure and do not change the project's normal environment. Use a fresh target:
 .\.venv\Scripts\python.exe scripts/qt_smoke.py --qt-path .test-tmp/qt-env --output-dir .test-tmp/qt-smoke-evidence
 ```
 
-The script loads real native settings controls, checks password masking and key
-clearing on Cancel using a fake key, then loads the real compiled form in a real
-QWebEngineView. It uses an off-the-record browser profile and disposable base,
+The script exercises native welcome/setup in both themes, actual Enter-key focus
+movement, a fake model catalog, verification gating, Done, reopening and key
+clearing on Close. It captures the native dialog and open model dropdown, then
+loads the real compiled form in a real QWebEngineView. The script now places the
+bundle **before** the form markup, matching Anki's `stdHtml`; this caught the
+startup ordering gap in the earlier smoke, which placed the bundle after the form.
+The production bundle waits for DOMContentLoaded and its ready handshake returns
+initial state. DOM readiness is not bridge readiness: Anki installs `pycmd` via an
+asynchronous QWebChannel callback. Native status refreshes retry `wayoomConnect`
+until the Python bridge receives ready; Anki queues native evals until `domDone`.
+The browser never sends the first handshake before `pycmd` exists and suppresses
+concurrent handshake attempts. Regression tests cover this delayed installation.
+The Qt smoke now injects Anki's actual `_create_bridge_script()` and registers a
+real QWebChannel Python object instead of supplying an early JavaScript `pycmd`
+stub. A native mouse click runs the bundled SDK connection test through the real
+Python Bridge, with only provider transport replaced by a socket-free fixture.
+It checks verification, the visible success banner, and the native Settings
+command. Exceptions in Qt callbacks fail the smoke rather than entering a debugger.
+It uses an off-the-record browser profile and disposable base,
 blocks external browser requests, and does not load the Anki main window or any
 personal profile. It validates invalid-count errors, preservation of typed topic
 and focus across 20 state pushes, inert text, and saves settled light/dark PNGs.
-The light screenshot explicitly forces light colors because the host prefers dark.
+Light/dark screenshots use Anki's `night-mode` document class. Dropdown options
+have explicit foreground/background colors instead of inheriting OS popup colors.
+The Windows offscreen target loads Segoe UI explicitly for native screenshots.
 It does not disable Chromium's sandbox/web security. `--disable-gpu` is used for
 headless rendering. The smoke stays optional; absence/failure is explicit, never
 a skipped default-suite success.
 
 Observed on Windows with aqt/Anki 26.9.3 and Qt/PyQt 6.12.0: the smoke passed and
-both screenshots were visually inspected. Chromium emitted GPU-context warnings
+native setup, dropdown and browser screenshots were visually inspected. Chromium emitted GPU-context warnings
 but completed the checks. Native DLL access required elevated tool execution in
 this workspace sandbox. This narrow proof does not close manual docking, actual
 AnkiWebView, keyboard traversal/screen-reader, OS-store, Browser/Undo, full upgrade,
@@ -639,15 +707,15 @@ or cross-platform gates. For those, use [MANUAL_VERIFICATION.md](MANUAL_VERIFICA
 
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
 
-- Provider API calls, SDK model compatibility, real credential stores and native onboarding behavior, and live transport retry/cancellation behavior.
+- Live provider API calls and model catalogs, SDK model compatibility, real credential stores, full Anki onboarding integration, and live transport retry/cancellation behavior.
 - Real-model naming, generation, repair behavior, relevance, and difficulty quality.
-- Real provider compatibility, real Qt rendering, accessibility, and user-driven review sessions. The form is wired and tested with DOM doubles and real backend operations; it is not a real Qt UI test.
-- Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM, with DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations and setup/settings dialog logic still require real-platform verification.
+- Accessibility, full Anki UI integration, and user-driven review sessions. The optional Qt smoke checks native setup and Chromium rendering in isolation; it does not run Anki's main window.
+- Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM and optional real Qt Chromium smoke, alongside DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations still require real-platform verification.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
 The generation UI uses `ApplicationRuntime.start_configured_job()` and `add_cards()` through the guarded bridge. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel offers the form, Generate/Retry/Cancel, View cards, native Settings, recovery, and repair controls. All planned implementation milestones are complete; the owner verification tools and checklist are ready, while the named human gates remain open.
 
-The pinned integration target and packaged minimum are Anki **26.9.3**. Real Qt compatibility remains unverified. The GitHub Actions workflow runs these suites and packages artifacts on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
+The pinned integration target and packaged minimum are Anki **26.9.3**. Full Anki UI and cross-platform Qt compatibility remain unverified. The GitHub Actions workflow runs these suites and packages artifacts on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 
 ## References
 

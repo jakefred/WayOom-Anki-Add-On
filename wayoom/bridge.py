@@ -12,7 +12,7 @@ from .validation import ValidationError
 from .models import model_id
 
 CATEGORIES = {"success", "authentication", "credentials", "model", "quota", "rate-limit", "timeout", "network",
-              "refusal", "malformed", "refused", "canceled", "redirect", "oversized", "provider", "validation"}
+              "refusal", "malformed", "refused", "canceled", "redirect", "oversized", "provider", "validation", "local"}
 
 
 class Bridge:
@@ -69,7 +69,7 @@ class Bridge:
                 raise ProxyError("refused")
             if op == "ready" and not payload:
                 self.client_ready = True
-                self.reply(rpc_id, {})
+                self.reply(rpc_id, {"state": self.runtime.panel_state()})
             elif op == "destinations" and not payload:
                 from .operations import list_destinations_in_background
                 list_destinations_in_background(
@@ -220,7 +220,7 @@ class Bridge:
 
     def begin_test(self, provider, callback):
         if not self.client_ready or self._closed or self.runtime._epoch != self.epoch:
-            raise ValidationError("The panel is still loading. Try again shortly.")
+            raise ValidationError("The panel connection is not ready. Close setup and reopen WayOom from Tools, then retry. If it persists, restart Anki.")
         if self._tests:
             raise ValidationError("Wait for the current connection test to finish")
         self.runtime.settings_guard()

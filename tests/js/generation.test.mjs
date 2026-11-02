@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GenerationEngine } from '../../web/generation.mjs';
+import { GenerationEngine, createStartToken } from '../../web/generation.mjs';
+import { APICallError } from 'ai';
 import { BridgeError } from '../../web/bridge.mjs';
 import { generationPrompt, cardsWireSchema } from '../../web/generation-provider.mjs';
 
@@ -204,6 +205,27 @@ test('profile closure discards retained data and rejects pending generation', as
   h.engine.handleEvent({ event: 'closed' });
   await rejected; waiting.resolve({ cards: [card('Late')] });
   assert.equal(h.engine.retainedCount, 0); assert.equal(h.commits.length, 0);
+});
+
+test('missing randomUUID falls back to secure bytes; missing crypto fails locally without requests', async () => {
+  const token = createStartToken({getRandomValues: bytes => { bytes.fill(171); return bytes; }});
+  assert.equal(token, 'ab'.repeat(16));
+  const h = harness({ options: { token: () => createStartToken({}) } });
+  await assert.rejects(h.engine.run(form()), error => error.category === 'local'
+    && error.stage === 'starting' && error.diagnostic === 'secure-random-unavailable');
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.engine.active, null);
+});
+
+test('HTTP diagnostic survives retries and engine wrapping without raw provider content', async () => {
+  const h = harness({script: () => { throw new APICallError({message: 'private topic and key',
+    url: 'https://example.invalid', requestBodyValues: {}, statusCode: 400,
+    data: {error: {code: 'unsupported_parameter', param: 'max_output_tokens', message: 'private'}}}); }});
+  await assert.rejects(h.engine.run(form()), error => error.category === 'provider'
+    && error.diagnostic.includes('HTTP 400') && error.diagnostic.includes('max_output_tokens')
+    && !JSON.stringify(error).includes('private'));
+  assert.equal(h.calls.length, 3);
 });
 
 test('authentication failure is terminal and never silently retried', async () => {

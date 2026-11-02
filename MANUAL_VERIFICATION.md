@@ -15,9 +15,16 @@ profiles or sign in to sync. Use dedicated low-limit provider keys only for the
 explicit live checks. Do not weaken browser security to get a pass.
 
 - [ ] Install the `.ankiaddon` in this base on Anki 26.9.3. Restart. The first
-  profile opens WayOom/setup; Cancel leaves Anki usable. Setup can be reopened.
-  One provider is enough. Save, restart and confirm setup does not repeat.
+  profile shows the WayOom welcome with Set up now and Skip for now. Skip leaves
+  Anki usable and generation disabled; Settings reopens. Enter in a field advances
+  focus without closing the dialog. Connect one key, select a returned model,
+  test successfully, then Done. Restart and confirm setup does not repeat.
   **AC-01/02/03/25.**
+- [ ] Test soon after startup and again after closing/reopening Settings. The
+  connection must initialize without an indefinite loading error. Test progress
+  and labeled success/failure must be clearly visible below the title. After
+  connecting, the saved-key notice remains visible; Use a different key opens the
+  replacement field, and Keep saved key preserves the existing credential.
 - [ ] On Windows, macOS and Linux, exercise protected save, replace, test, remove
   and profile isolation with dedicated keys. If unavailable, explicitly choose
   session-only storage and confirm it disappears after closing the profile.
@@ -28,6 +35,11 @@ explicit live checks. Do not weaken browser security to get a pass.
   live-untested until the owner reviews results. Check rejected/expired key,
   unavailable model, quota/rate limit and disconnected network outcomes. Network
   failure must not invalidate a verified key. **AC-04/21/27/28/29; ARCH-03.**
+- [ ] Load the model dropdown with each company's dedicated key. Check automatic
+  company hints and manual selection for ambiguous keys, rejected-key feedback,
+  token limits where returned, cancellation and closing during discovery. Model
+  changes/replacement keys require another successful test before Done/Generate.
+  Inspect both dropdowns in Anki dark mode, including the expanded option list.
 - [ ] Check keyboard labels, Tab/Shift-Tab order, visible focus, inline errors
   and announced status with a screen reader. Verify readable light/dark themes
   and scrolling at the intended panel width. Enter 0, 101, a fraction, blank

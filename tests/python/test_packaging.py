@@ -64,7 +64,7 @@ class PackagingTests(unittest.TestCase):
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(manifest["package"], "wayoom")
             self.assertEqual(manifest["min_point_version"], 260903)
-            self.assertEqual(manifest["human_version"], "0.1.0")
+            self.assertEqual(manifest["human_version"], "0.1.5")
             self.assertIn(b"Remove all keys", archive.read("README.md"))
             notices = archive.read("THIRD_PARTY_NOTICES.txt").decode()
             self.assertIn("@ai-sdk/provider-utils 5.0.72", notices)
@@ -148,6 +148,9 @@ for name in names:
             store = ProfileStore(users, profile)
             service.save_key(store, "openai", f"fake-key-{profile}", model_id="saved-model")
             service.select_provider(store, "openai")
+            providers = store.settings()["providers"]
+            providers["openai"].update(connectionStatus="verified", verifiedModelId="saved-model")
+            store.update_settings(providers=providers)
             store.update_settings(panelVisible=False, notetypeId=123, ownedNotetypeIds=[123])
             store.prepare({"requestId": f"pending-{profile}", "cardCount": 1,
                            "destination": {"mode": "existing", "deckId": 1}, "providerId": "openai"})

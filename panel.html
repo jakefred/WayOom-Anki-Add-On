@@ -1,22 +1,21 @@
 ﻿<style>
-  :root { color-scheme: light dark; }
-  body { font-family: sans-serif; margin: 0; padding: 20px; color: #202124; background: #fff; }
-  body.nightMode, .nightMode body { color: #eee; background: #202124; }
-  .nightMode { color-scheme: dark; }
-  @media (prefers-color-scheme: dark) { body { color: #eee; background: #202124; } }
+  :root { color-scheme: light; --panel-bg: #fff; --panel-text: #202124; --field-bg: #fff; --error: #b3261e; }
+  :root.night-mode, .nightMode {
+    color-scheme: dark; --panel-bg: #202124; --panel-text: #eee; --field-bg: #292a2d; --error: #ffb4ab;
+  }
+  body { font-family: sans-serif; margin: 0; padding: 20px; color: var(--panel-text); background: var(--panel-bg); }
   .panel { max-width: 42rem; margin: auto; }
   h1 { margin: 0; font-size: 1.5rem; }
   .header, .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .header { justify-content: space-between; }
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   label { display: block; margin: 16px 0 6px; font-weight: 600; }
-  input, select, textarea { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid #888; border-radius: 4px; }
+  input, select, textarea { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; color: var(--panel-text); background: var(--field-bg); border: 1px solid #888; border-radius: 4px; }
+  select option { color: var(--panel-text); background: var(--field-bg); }
   textarea { resize: vertical; min-height: 6rem; }
   button { padding: 8px 12px; font: inherit; cursor: pointer; }
   .hint { font-size: .9rem; }
-  .error { color: #b3261e; font-weight: 600; margin: 6px 0; }
-  body.nightMode .error, .nightMode body .error { color: #ffb4ab; }
-  @media (prefers-color-scheme: dark) { .error { color: #ffb4ab; } }
+  .error { color: var(--error); font-weight: 600; margin: 6px 0; }
   [aria-invalid="true"] { border-color: currentColor; outline: 1px solid currentColor; }
   [hidden] { display: none !important; }
   input:focus-visible, select:focus-visible, textarea:focus-visible,
@@ -57,7 +56,7 @@
     </fieldset>
     <div class="actions"><button id="generate" type="submit" disabled>Generate</button><button id="retry" type="button" hidden>Retry</button></div>
   </form>
-  <div role="status" aria-live="polite" aria-atomic="true"><p><strong id="state-label">Ready</strong></p><p id="message">Loading profile…</p></div>
+  <div role="status" aria-live="polite" aria-atomic="true"><p><strong id="state-label">Loading</strong></p><p id="message">Loading profile…</p></div>
   <p id="retained" class="hint"></p>
   <div class="actions">
     <button id="cancel" type="button" hidden>Cancel generation</button>

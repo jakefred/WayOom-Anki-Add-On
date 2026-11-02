@@ -1,14 +1,23 @@
 import { requestSchema, basicCardSchema, deckNamingResultSchema, validateGeneration } from './validation.mjs';
 import { BridgeError } from './bridge.mjs';
-import { classifyFailure, failureMessages } from './failures.mjs';
+import { classifyFailure, failureMessages, failureDiagnostic } from './failures.mjs';
 import { createStructuredCaller } from './generation-provider.mjs';
 
-const terminal = new Set(['authentication', 'credentials', 'model', 'quota', 'rate-limit', 'refusal', 'refused', 'redirect']);
+const terminal = new Set(['authentication', 'credentials', 'model', 'quota', 'rate-limit', 'refusal', 'refused', 'redirect', 'local']);
 const copy = card => ({ front: card.front, back: card.back });
 
+export function createStartToken(crypto = globalThis.crypto) {
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto?.getRandomValues === 'function') {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  throw new BridgeError('local', 'secure-random-unavailable');
+}
+
 export class GenerationError extends BridgeError {
-  constructor(category, stage, acceptedCount = 0, exhausted = false) {
-    super(category);
+  constructor(category, stage, acceptedCount = 0, exhausted = false, diagnostic = '') {
+    super(category, diagnostic);
     this.name = 'GenerationError';
     this.message = failureMessages[category] ?? failureMessages.provider;
     this.stage = stage;
@@ -20,7 +29,7 @@ export class GenerationError extends BridgeError {
 export class GenerationEngine {
   constructor(client, { call = createStructuredCaller(client), onProgress = () => {},
     now = () => globalThis.performance.now(), setTimer = setTimeout, clearTimer = clearTimeout,
-    token = () => globalThis.crypto.randomUUID(), timeout = 600000 } = {}) {
+    token = createStartToken, timeout = 600000 } = {}) {
     Object.assign(this, { client, call, onProgress, now, setTimer, clearTimer, token, timeout });
     this.active = null;
     this._retained = null;
@@ -109,12 +118,14 @@ export class GenerationEngine {
     if (active.request.destination.mode !== 'new' || active.request.destination.name !== null) return null;
     if (typeof job.deckName === 'string') return job.deckName;
     let category = 'malformed';
+    let diagnostic = '';
     for (let attempt = 0; attempt < 3; attempt++) {
       await this._progress(active, 'naming', 0);
       try {
         const output = await this._wait(this.call({ job, request: active.request, stage: 'naming', batch: 0,
           feedback: attempt ? 'Return a nonblank title of at most 100 characters, with no control characters.' : null,
           signal: active.controller.signal }), active);
+        diagnostic = '';
         const parsed = deckNamingResultSchema.safeParse(output);
         if (!parsed.success) { category = 'malformed'; continue; }
         const retained = await this._rpc('naming-complete', { requestId: active.requestId, deckName: parsed.data.deckName }, active);
@@ -122,16 +133,18 @@ export class GenerationEngine {
       } catch (error) {
         this._ensure(active);
         category = classifyFailure(error);
-        if (terminal.has(category)) throw new GenerationError(category, 'naming', this.retainedCount);
+        diagnostic = failureDiagnostic(error);
+        if (terminal.has(category)) throw new GenerationError(category, 'naming', this.retainedCount, false, diagnostic);
       }
     }
-    throw new GenerationError(category, 'naming', this.retainedCount, true);
+    throw new GenerationError(category, 'naming', this.retainedCount, true, diagnostic);
   }
 
   async _batch(active, job, batch) {
     const target = Math.min(25, active.request.cardCount - batch * 25);
     let feedback = null;
     let category = 'malformed';
+    let diagnostic = '';
     while (active.attempts[batch] < 3 && active.batches[batch].length < target) {
       await this._recheck(active);
       const count = target - active.batches[batch].length;
@@ -146,10 +159,12 @@ export class GenerationEngine {
       } catch (error) {
         this._ensure(active);
         category = classifyFailure(error);
-        if (terminal.has(category)) throw new GenerationError(category, 'cards', this.retainedCount);
+        diagnostic = failureDiagnostic(error);
+        if (terminal.has(category)) throw new GenerationError(category, 'cards', this.retainedCount, false, diagnostic);
         feedback = 'The previous call failed. Return the requested JSON object with exactly the missing cards.';
         continue;
       }
+      diagnostic = '';
       await this._progress(active, 'validating', batch);
       if (!output || typeof output !== 'object' || Array.isArray(output)
           || Object.keys(output).length !== 1 || !Object.hasOwn(output, 'cards') || !Array.isArray(output.cards)) {
@@ -175,14 +190,14 @@ export class GenerationEngine {
       category = 'malformed';
       feedback = 'Some cards were invalid, missing, or duplicate. Generate only the remaining missing cards, avoiding all accepted fronts.';
     }
-    if (active.batches[batch].length !== target) throw new GenerationError(category, 'cards', this.retainedCount, true);
+    if (active.batches[batch].length !== target) throw new GenerationError(category, 'cards', this.retainedCount, true, diagnostic);
   }
 
   async run(input) {
     if (this.active) throw new GenerationError('refused', 'starting');
     const parsed = requestSchema.safeParse({ ...input, requestId: 'new-job' });
     if (!parsed.success) { this.discard(); throw new GenerationError('validation', 'starting'); }
-    const active = { startToken: this.token(), controller: new AbortController(), reason: null,
+    const active = { startToken: null, controller: new AbortController(), reason: null,
       stage: 'starting', retain: true, deadline: this.now() + this.timeout, batches: [] };
     this.active = active;
     this.lastFailure = null;
@@ -190,6 +205,7 @@ export class GenerationEngine {
     let timer = this.setTimer(deadlineReached, this.timeout);
     try {
       // Start cancellation is token-scoped so a late start response cannot strand a job.
+      active.startToken = this.token();
       const job = await this._wait(this.client.rpc('start', { request: parsed.data, startToken: active.startToken }), active);
       active.request = requestSchema.parse(job.request);
       active.requestId = active.request.requestId;
@@ -232,11 +248,11 @@ export class GenerationEngine {
             || ['pending', 'uncertain'].includes(status.commitState)) category = 'uncertain';
       } else if (active.requestId && category !== 'canceled') {
         await this.client.rpc('fail', { requestId: active.requestId, category, stage: active.stage }).catch(() => {});
-      } else {
+      } else if (active.startToken) {
         this.client.rpc('cancel-start', { startToken: active.startToken }).catch(() => {});
       }
       if (category === 'canceled' || category === 'uncertain' || !active.retain) this._retained = null;
-      const failure = new GenerationError(category, active.stage, this.retainedCount, error?.exhausted ?? false);
+      const failure = new GenerationError(category, active.stage, this.retainedCount, error?.exhausted ?? false, failureDiagnostic(error));
       this.lastFailure = { category, stage: failure.stage, acceptedCount: failure.acceptedCount,
         exhausted: failure.exhausted, retryable: category !== 'uncertain' && category !== 'canceled' };
       throw failure;

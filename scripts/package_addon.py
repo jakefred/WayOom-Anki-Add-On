@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from scripts.build_credentials import runtime_files
 
-MODULES = ("__init__", "bridge", "cards", "credentials", "jobs", "models",
+MODULES = ("__init__", "bridge", "cards", "catalog", "credentials", "jobs", "models",
            "operations", "proxy", "runtime", "settings", "settings_dialog", "storage", "validation")
 
 

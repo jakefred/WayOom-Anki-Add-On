@@ -1,5 +1,5 @@
 import { requestSchema } from './validation.mjs';
-import { failureMessages } from './failures.mjs';
+import { classifyFailure, failureMessages, failureDiagnostic } from './failures.mjs';
 
 const busyStates = new Set(['generating', 'validating', 'adding', 'starting']);
 const stageNames = { starting: 'Starting', naming: 'Naming deck', cards: 'Generating cards',
@@ -185,11 +185,12 @@ export class GenerationPanel {
       void this.refreshDecks();
     } catch (error) {
       if (this.closed || epoch !== this.state.profileEpoch) return;
-      const category = error.category;
+      const category = classifyFailure(error);
+      const diagnostic = failureDiagnostic(error);
       this.uncertain = category === 'uncertain';
       this.terminal = category === 'canceled' ? { state: 'canceled', message: 'Canceled. No cards were added.' }
         : { state: 'failed', stage: error.stage,
-          message: `${stageNames[error.stage] ?? 'Generation'} failed. ${failureMessages[category] ?? failureMessages.provider}` };
+          message: `${stageNames[error.stage] ?? 'Generation'} failed. ${failureMessages[category] ?? failureMessages.provider}${diagnostic ? ` Details: ${diagnostic}.` : ''}` };
     } finally {
       this.running = false;
       this.progress = null;
@@ -206,12 +207,12 @@ export class GenerationPanel {
     const adding = this.engine.active?.stage === 'adding' || this.state.state === 'adding' || this.progress?.stage === 'adding';
     const busy = this.running || !!this.engine.active || busyStates.has(this.state.state);
     const blockedAction = ['inspect', 'reopen-profile', 'repair-note-type'].includes(this.state.action);
-    const authoritative = blockedAction || ['repairing', 'recovering'].includes(this.state.state)
+    const authoritative = blockedAction || ['repairing', 'recovering', 'setup'].includes(this.state.state)
       || !this.running && busyStates.has(this.state.state)
       || this.terminal?.stage === 'adding' && this.state.state === 'failed';
     const display = authoritative ? this.state : this.uncertain
       ? { state: 'failed', message: failureMessages.uncertain } : this.terminal ?? this.state;
-    let label = { ready: 'Ready', recovering: 'Checking previous jobs', repairing: 'Repairing note type',
+    let label = { ready: 'Ready', setup: 'Setup required', recovering: 'Checking previous jobs', repairing: 'Repairing note type',
       generating: 'Generating', validating: 'Validating', adding: 'Adding cards', complete: 'Complete',
       canceled: 'Canceled', failed: 'Failed' }[display.state] ?? 'Ready';
     let message = display.message ?? 'Loading profile…';

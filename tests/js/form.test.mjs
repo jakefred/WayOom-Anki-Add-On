@@ -108,6 +108,20 @@ test('failures preserve raw form fields, hide raw errors, show retained Retry an
   }
 });
 
+test('local startup errors and safe HTTP details are visible without raw exception text', async () => {
+  const h = await harness({run: () => { throw new TypeError('private-topic-or-key'); }});
+  await h.panel.submit();
+  assert.match(h.elements['#message'].textContent, /local application error/);
+  assert.match(h.elements['#message'].textContent, /Details: TypeError/);
+  assert.doesNotMatch(h.elements['#message'].textContent, /private-topic-or-key/);
+  h.engine.run = async () => { throw Object.assign(new Error('private-body'),
+    {category:'provider',stage:'cards',diagnostic:'HTTP 400; unsupported_parameter; private-body'}); };
+  await h.panel.submit();
+  assert.match(h.elements['#message'].textContent, /Generating cards failed/);
+  assert.match(h.elements['#message'].textContent, /HTTP 400; unsupported_parameter/);
+  assert.doesNotMatch(h.elements['#message'].textContent, /private-body/);
+});
+
 test('settings changes invalidate drafts, unchanged state does not, recovery and repair actions gate generation', async () => {
   const h = await harness();
   const previous = h.engine.discards;

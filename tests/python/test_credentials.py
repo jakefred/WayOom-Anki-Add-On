@@ -45,14 +45,14 @@ class CredentialTests(unittest.TestCase):
             reference = self.service.save_key(self.store, "openai", secret)
             summary = self.service.summary(self.store)
         self.assertEqual(self.service.read(self.store, "openai", reference), secret)
-        self.assertFalse(summary["setupRequired"])
+        self.assertTrue(summary["setupRequired"])
         self.assertEqual(summary["providers"]["openai"]["connectionStatus"], "untested")
         self.assertNotIn(secret, output.getvalue() + json.dumps(summary))
         for path in self.root.rglob("*.json"):
             self.assertNotIn(secret, path.read_text())
         self.assertNotIn(secret, repr(self.service))
         reopened = CredentialService(lambda: self.vault)
-        self.assertFalse(reopened.summary(ProfileStore(self.root, "a"))["setupRequired"])
+        self.assertTrue(reopened.summary(ProfileStore(self.root, "a"))["setupRequired"])
 
     def test_profiles_and_installations_do_not_share_keys(self):
         reference = self.service.save_key(self.store, "openai", "fake-a")
@@ -168,6 +168,11 @@ class CredentialTests(unittest.TestCase):
             runtime.start_configured_job(request)
         reference = self.service.save_key(self.store, "openai", "fake-secret", session_only=True)
         runtime.refresh_configuration()
+        with self.assertRaises(CredentialError):
+            runtime.start_configured_job(request)
+        providers = self.store.settings()["providers"]
+        providers["openai"].update(connectionStatus="verified", verifiedModelId=runtime.configuration["providers"]["openai"]["modelId"])
+        self.store.update_settings(providers=providers)
         job = runtime.start_configured_job(request)
         self.assertEqual(job["request"]["providerId"], "openai")
         self.assertEqual(job["settings"]["credentialRef"], reference)

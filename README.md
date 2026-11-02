@@ -10,7 +10,21 @@ Requires Anki **26.9.3 or later** on desktop. That minimum is the tested backend
 target, not a claim that every later Anki version or platform has been verified.
 No Node.js, npm, terminal service, or dependency installation is needed by users.
 
-Open WayOom from Anki's Tools menu and configure a provider in Settings. Choose
+On first opening, choose **Set up now** or **Skip for now** below the WayOom title.
+In Settings, paste your API key. Recognizable key formats select the company;
+otherwise choose it yourself. Select **Verify key & load models**, choose a text
+model from the dropdown, then **Test selected model**. Testing uses a small amount
+of billable API tokens. **Done** and generation require a successful model test.
+Enter moves focus instead of closing setup. You can reopen Settings at any time.
+Connecting saves the key; closing discards only unsaved input. A replacement key
+or changed model must be verified again. Model token limits are shown when the
+provider supplies them; no prices or limits are guessed.
+After connecting, a persistent notice identifies the saved company's key and its
+storage location. **Use a different key** opens the replacement field; **Keep saved
+key** discards that unsaved replacement. Model-test progress and results appear in
+a large banner below the WayOom title.
+
+Open WayOom from Anki's Tools menu. Choose
 an existing deck or Create new deck, enter a topic and 1–100 cards, select a
 difficulty, then Generate. Leave a new deck's name blank for AI naming.
 Cancel is available before addition begins; use Anki Undo after completion.
@@ -18,7 +32,7 @@ After a generation failure, Retry with unchanged inputs reuses validated drafts.
 Changing any input discards those drafts. View cards opens the completed batch.
 
 For a disposable test installation, use Anki's **Tools → Add-ons → Install from
-file**, select `wayoom-0.1.0.ankiaddon`, and restart Anki. The package identity is
+file**, select `wayoom-0.1.5.ankiaddon`, and restart Anki. The package identity is
 `wayoom`; use the same identity for upgrades. A source folder installed under a
 different name is a separate installation and will not share settings or keys.
 

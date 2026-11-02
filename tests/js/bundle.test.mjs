@@ -4,6 +4,48 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { panelDocument } from './panel-dom.mjs';
 
+test('DOM ready before Anki QWebChannel: native handshake retry connects once without remounting', async () => {
+  const { document } = panelDocument();
+  const context = vm.createContext({ window: {}, document,
+    TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
+    AbortController, AbortSignal, ReadableStream, TransformStream, setTimeout, clearTimeout });
+  vm.runInContext(readFileSync(new URL('../../web/dist/panel.js', import.meta.url), 'utf8'), context);
+  const panel = context.window.wayoomPanel;
+  assert.ok(panel);
+  assert.equal(context.window.wayoomBridge.pending.size, 0, 'no failed early RPC');
+  context.window.wayoomConnect(); // Native eval before pycmd must also be harmless.
+  const commands = [];
+  context.pycmd = command => commands.push(JSON.parse(command.slice('wayoom:v1:rpc:'.length)));
+  context.window.wayoomConnect();
+  context.window.wayoomConnect();
+  assert.equal(commands.length, 1, 'only one handshake in flight');
+  assert.equal(commands[0].op, 'ready');
+  context.window.wayoomBridge.receive({v: 1, id: commands[0].id, ok: true, result: {}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.window.wayoomPanel, panel, 'typed state and event handlers survive');
+  assert.equal(context.window.wayoomBridge.pending.size, 0);
+});
+
+test('Anki scripts may load before form HTML: mount only on DOMContentLoaded', () => {
+  const { document } = panelDocument();
+  document.readyState = 'loading';
+  let ready, calls = 0;
+  document.addEventListener = (event, callback) => { assert.equal(event, 'DOMContentLoaded'); ready = callback; };
+  const query = document.querySelector.bind(document);
+  document.querySelector = selector => { assert.notEqual(document.readyState, 'loading'); return query(selector); };
+  const context = vm.createContext({ window: {}, document,
+    pycmd: command => { calls++; const m = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
+      context.window.wayoomBridge.receive({v: 1, id: m.id, ok: true, result: {}}); },
+    TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
+    AbortController, AbortSignal, ReadableStream, TransformStream, setTimeout, clearTimeout });
+  vm.runInContext(readFileSync(new URL('../../web/dist/panel.js', import.meta.url), 'utf8'), context);
+  assert.equal(context.window.wayoomPanel, undefined);
+  assert.equal(calls, 0);
+  document.readyState = 'interactive'; ready();
+  assert.equal(typeof context.window.wayoomPanel.submit, 'function');
+  assert.equal(calls, 1);
+});
+
 test('self-contained browser bundle loads SDK and updates the panel without Node globals', () => {
   const { document, elements } = panelDocument();
   const commands = [];

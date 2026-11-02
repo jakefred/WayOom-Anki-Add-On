@@ -29,6 +29,47 @@ class SettingsController:
     def summary(self):
         return self.credentials.summary(self.store)
 
+    def connect(self, provider, key, session_only=False):
+        self.guard()
+        if provider not in PROVIDER_INFO:
+            raise CredentialError("Choose the company that issued your API key")
+        if key.strip():
+            from .catalog import key_problem, detect_provider
+            problem = key_problem(key)
+            if problem:
+                raise CredentialError(problem)
+            detected = detect_provider(key)
+            if detected and detected != provider:
+                raise CredentialError("This key looks like it belongs to a different company")
+            self.credentials.save_key(self.store, provider, key, session_only=session_only)
+        elif not self.summary()["providers"].get(provider, {}).get("available"):
+            raise CredentialError("Paste your API key to begin")
+
+    def choose_model(self, provider, model):
+        self.guard()
+        if not self.summary()["providers"].get(provider, {}).get("available"):
+            raise CredentialError("Connect an available key first")
+        if type(model) is not str or not model or len(model) > 256 or any(ord(c) < 33 or ord(c) > 126 for c in model):
+            raise CredentialError("Choose a model from the dropdown")
+        settings = self.store.settings()
+        config = settings["providers"][provider]
+        from .models import model_id
+        if model_id(provider, config) != model:
+            config.update(modelId=model, connectionStatus="untested")
+            config.pop("verifiedModelId", None)
+            self.store.update_settings(providers=settings["providers"])
+
+    def finish(self, provider, model):
+        self.guard()
+        config = self.summary()["providers"].get(provider, {})
+        if not config.get("available") or config.get("connectionStatus") != "verified" or config.get("modelId") != model:
+            raise CredentialError("Verify the selected model before finishing setup")
+        self.credentials.select_provider(self.store, provider)
+
+    def remove(self, provider):
+        self.guard()
+        self.credentials.remove_key(self.store, provider)
+
     def save(self, changes, active):
         self.guard()
         for provider, change in changes.items():

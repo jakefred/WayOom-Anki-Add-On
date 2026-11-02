@@ -32,6 +32,7 @@ class SidebarTests(unittest.TestCase):
         package.start()
         self.addCleanup(package.stop)
         spec.loader.exec_module(self.addon)
+        self.original_show_settings = self.addon.show_settings
         settings_dialog = patch.object(self.addon, "show_settings")
         self.show_settings = settings_dialog.start()
         self.addCleanup(settings_dialog.stop)
@@ -48,16 +49,46 @@ class SidebarTests(unittest.TestCase):
         self.qt.QDockWidget.assert_not_called()
         self.aqt.mw.form.menuTools.addAction.assert_called_once_with(self.addon.menu_action)
 
-    def test_first_run_opens_native_setup_and_completed_setup_does_not_repeat(self):
+    def test_first_run_and_historical_setup_flag_require_verified_configuration(self):
         self.addon.profile_opened()
-        self.show_settings.assert_called_once_with()
+        self.show_settings.assert_called_once_with(welcome=True)
         self.addon.runtime.store.update_settings(setupComplete=True)
         self.addon.close_sidebar()
         self.show_settings.reset_mock()
+        # A historical setupComplete flag cannot bypass current verification.
         self.addon.profile_opened()
-        self.show_settings.assert_not_called()
+        self.show_settings.assert_called_once_with(welcome=True)
+        self.show_settings.reset_mock()
         self.addon.panel_command(self.addon.sidebar.widget(), "wayoom:v1:settings")
         self.show_settings.assert_called_once_with()
+
+    def test_settings_uses_nonblocking_modal_and_reopens_after_finished(self):
+        self.addon.profile_opened()
+        factory = Mock()
+        module = SimpleNamespace(SettingsDialog=factory)
+        with patch.dict("sys.modules", {"wayoom_addon_test.wayoom.settings_dialog": module}):
+            self.original_show_settings()
+            first = self.addon.settings_dialog
+            first.open.assert_called_once()
+            first.exec.assert_not_called()
+            self.original_show_settings()
+            first.raise_.assert_called_once()
+            first.finished.connect.call_args.args[0](0)
+            self.assertIsNone(self.addon.settings_dialog)
+            self.original_show_settings()
+            self.assertEqual(factory.call_count, 2)
+
+    def test_native_status_retries_handshake_until_javascript_is_ready(self):
+        self.addon.profile_opened()
+        web = self.addon.sidebar.widget()
+        web.eval.reset_mock()
+        self.addon.refresh_status()
+        self.assertTrue(any("wayoomConnect" in call.args[0] for call in web.eval.call_args_list))
+        self.addon.panel_command(web, 'wayoom:v1:rpc:{"v":1,"id":"ready-test","op":"ready","payload":{}}')
+        self.assertTrue(self.addon.provider_bridge.client_ready)
+        web.eval.reset_mock()
+        self.addon.refresh_status()
+        self.assertFalse(any("wayoomConnect" in call.args[0] for call in web.eval.call_args_list))
 
     def test_first_profile_load_opens_panel_automatically_and_loads_ui_once(self):
         # PANEL-02: the initial panel opens via the profile hook, without a

@@ -1,5 +1,7 @@
 export class BridgeError extends Error {
-  constructor(category) { super(`WayOom ${category}`); this.name = 'BridgeError'; this.category = category; }
+  constructor(category, diagnostic = '') {
+    super(`WayOom ${category}`); this.name = 'BridgeError'; this.category = category; this.diagnostic = diagnostic;
+  }
 }
 
 export class BridgeClient {
