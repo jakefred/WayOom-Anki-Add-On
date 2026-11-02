@@ -215,6 +215,8 @@ export class GenerationEngine {
       this._ensure(active);
       active.stage = 'adding';
       this.clearTimer(timer);
+      this.onProgress({ stage: 'adding', batch: active.batches.length - 1,
+        acceptedCount: active.batches.flat().length, cardCount: active.request.cardCount });
       const completed = await this._wait(this.client.rpc('commit', { requestId: active.requestId, result }), active);
       this._retained = null;
       return completed;

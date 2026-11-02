@@ -2,7 +2,7 @@
 
 ## What these tests establish
 
-The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, an SDK-to-Python provider bridge, and a generation engine. The sidebar opens a runtime that reconciles saved jobs before permitting generation. The generation form is still pending.
+The project has local validation, profile-bound job authorization, nonsecret persistence, recoverable Anki insertion, native settings, an SDK-to-Python provider bridge, a generation engine, and its generation form. The sidebar opens a runtime that reconciles saved jobs before permitting generation. Form events are tested through disposable Anki with fake provider replies; real Qt/webview and live-provider verification remain pending.
 
 | Suite | What runs | What it checks |
 | --- | --- | --- |
@@ -74,7 +74,8 @@ native connection tests and the generation engine call through the bridge.
 
 ## Implementation entry points
 
-- `web/validation.mjs`: Zod request schema and request-specific result validation. This is a **local** validator; provider adapters will need a JSON-Schema-compatible wire schema without local-only transformations.
+- `web/validation.mjs`: Zod request schema and request-specific result validation. This is a **local** validator; providers use a separate simple wire schema without local-only transformations.
+- `web/form.mjs`, `web/panel.mjs`, `panel.html`: persistent form controls, inline validation, deck refresh, generation/retained Retry, progress, cancellation, native settings, and recovery/repair actions.
 - `wayoom/validation.py`: independent validation at the Python boundary.
 - `wayoom/cards.py`: discover normal destination decks, provision/verify the owned note type, resolve naming collisions, insert with `col.add_notes()`, and reconcile job tags. Successful commits and recovery retain the stable note-type ID in profile settings.
 - `wayoom/jobs.py`: mint unique job IDs, snapshot provider/model references, enforce one active job per profile, authorize attempts and writes, and abort canceled/expired jobs. The budget is three attempts for each of `ceil(cardCount / 25)` fixed internal batches, plus three attempts for AI naming. The proxy consumes an attempt before transport; connection-test permits are single-use. SDK connection tests explicitly use `maxRetries: 0`.
@@ -166,7 +167,7 @@ The generation bridge must use `ApplicationRuntime.start_configured_job()` to
 snapshot the selected provider/reference from Python. Settings mutations are
 blocked while a job is running, preserving its credential choice. Existing core
 tests still call the lower-level `start_job()` with explicit nonsecret references.
-The generation-start form is not built yet. The engine's start bridge action calls
+The form calls the engine, whose start bridge action calls
 this configured entry point and receives the Python snapshot. The existing
 commit bridge action accepts only a current job ID and result, and obtains the
 request snapshot from Python. It never accepts a JavaScript request for insertion.
@@ -190,7 +191,7 @@ Uninstalling the add-on alone may leave keys in the OS credential store.
 RPC uses the `wayoom:v1:rpc:` prefix with `{v,id,op,payload}` envelopes. Responses
 are correlated by ID; repeat IDs in the bounded replay window do not send another
 call. Only the current WayOom webview can dispatch commands. Supported operations
-are ready, start, cancel-start, progress, fail, discard-retained, job-status,
+are ready, destinations, start, cancel-start, progress, fail, discard-retained, job-status,
 fetch, abort, test-result, naming-complete, validating, duplicates, and commit.
 A connection-test permit can only be minted by the native Qt action.
 Read-only duplicate checks use QueryOp and inspect the complete target deck;
@@ -258,8 +259,8 @@ It does not test TLS, real provider behavior, Qt, or a real credential store.
 ## Generation engine and retained retries
 
 The browser bundle exposes `window.wayoomGeneration`, an instance of
-`GenerationEngine`. Milestone 5's form will call `run(request)`, `cancel()`, and
-`discard()` on input changes. The engine already handles Python owner-ended and
+`GenerationEngine`. The form calls `run(request)`, `cancel()`, and
+`discard()` on input changes. The engine handles Python owner-ended and
 profile-closed events. It validates the request locally before starting, and
 Python independently validates the request, selects the active provider/effective
 model/credential reference, and mints its job ID. A start token makes replay
@@ -330,11 +331,66 @@ collection. JSON-line test pipes explicitly use UTF-8 so names round-trip correc
 on Windows. No real keys, real credential stores, real Qt windows, or real providers
 are used.
 
+## Generation form and UI coverage
+
+`window.wayoomPanel` is the production `GenerationPanel` controller. The form has
+labeled destination/name/count/topic/difficulty controls, field-specific errors
+using `aria-describedby` and `aria-invalid`, and an announced state/stage label.
+Generate validates with the shared request schema and synchronously disables
+submission before awaiting the engine. Python's independent checks still authorize
+every call and write. A whitespace-only name requests AI naming; supplied names
+are normalized by the same rules as before. No acceptance rules changed.
+
+The read-only `destinations` RPC uses a profile/collection-guarded QueryOp and
+returns normal-deck IDs plus full hierarchical names. Decks load after recovery,
+refresh on panel reopening, have a manual Refresh action, and refresh after
+success. Stale/out-of-order responses are ignored. A removed selection stays
+explicitly unavailable; it never falls back to another deck. Failed refreshes
+offer a retry without repeating on each state push. An identical deck list leaves
+its option nodes intact. Names, outcomes, status and recovery labels use textContent.
+
+The 500 ms state push does not set input values or rebuild the form. It preserves
+raw typing, validation errors, selection ranges and focused nodes. While generating,
+fields are disabled to preserve the request snapshot. Stage/draft counts are shown
+without invented percentages; Cancel is disabled immediately before commit and
+the UI explains finishing/Undo. View cards uses the native saved-job-tag action.
+Definitive failures retain the raw form, display safe errors and draft counts, and
+offer Retry. Backend destination/commit diagnostics and repair/recovery actions
+take priority when needed. Uncertain commits stay blocked across input edits until
+profile reconciliation. Repair progress takes priority over its previous error.
+
+Input edits discard drafts even if the user subsequently restores the old value.
+Python supplies an opaque configuration token based only on the active provider,
+effective model, immutable key reference and availability. Changes invalidate
+drafts without putting a key/reference in form state. Connection-test status or
+an unrelated provider's settings do not discard unchanged drafts. Profile closure
+invalidates pending UI work; a changed profile epoch resets the form. Hiding the
+panel preserves its form and running engine.
+
+`tests/js/form.test.mjs` uses an explicit DOM double for values, events, focus and
+node identity. It covers invalid/boundary counts, topic/name errors, difficulty,
+deck refresh failure/removal/races, synchronous double-submit prevention, insertion
+Cancel lock, safe messages, actions, draft invalidation, profile changes and
+uncertain commits. `bundle.test.mjs` still checks real bundled startup and commands.
+These tests do not establish browser layout, actual tab order, screen-reader output,
+contrast, or focus behavior in Qt. CSS supplies light/dark colors and visible focus;
+all those real webview/accessibility checks remain manual gates.
+
+`tests/js/form-integration.test.mjs` dispatches form submit/Retry/Cancel events into
+the actual production bundle and its engine, real OpenAI SDK adapter, actual Python
+bridge and a disposable real Anki collection. It inserts ten into an existing deck
+after a synchronous double submit, creates a one-card supplied-name deck, and proves
+a failed 30-card AI-named job adds nothing before Retry reuses 25 drafts and makes
+only one five-card call. It inserts 41 cards total, then cleans up. Cancel also
+blocks a delayed provider reply. DOM/Qt scheduling, provider replies and native
+Browser dispatch are doubled; socket creation is blocked. Real backend rendering,
+rollback, Undo and Browser search construction are covered by their separate suites.
+
 ## Packaging and upgrade verification
 
-Milestone 6 packages the current implementation. **Milestone 5 remains pending**:
-this is an incomplete development artifact, without a working generation form.
-Packaging does not close the live-provider, real Qt, actual credential-store,
+Milestone 6 packages the current implementation, now including milestone 5's form.
+This remains a development artifact. Packaging does not close the live-provider,
+real Qt, actual credential-store,
 educational-quality, dependency-review, or cross-platform CI release gates.
 
 From a checkout with Node 24 and CPython 3.12, install exactly the locked JS
@@ -402,8 +458,9 @@ deleted, revoke the dedicated keys through the provider's key-management pages.
 
 “Automated” below names the tested boundary, not certification of the complete
 criterion. “Manual pending” requires real Anki/Qt or OS stores. “Live pending”
-requires real providers or human quality review. Form behavior remains unimplemented
-until milestone 5; a backend or engine test does not prove that form interaction.
+requires real providers or human quality review. Form behavior is covered with
+DOM doubles and production event wiring; a backend test alone does not prove
+real Qt interaction.
 All automated provider calls use fake replies and fake keys.
 
 | Criterion | Current evidence | Remaining verification |
@@ -411,27 +468,27 @@ All automated provider calls use fake replies and fake keys.
 | AC-01 First setup | Automated: `test_sidebar.py`, `test_settings_dialog.py` first-open/setup logic with Qt doubles | Manual pending: native popup in real Anki |
 | AC-02 Cancel setup | Automated: dialog cancel and no-save logic, sidebar lifecycle | Manual pending: actual dialog and continued Anki use |
 | AC-03 Reopen settings | Automated: `test_credentials.py` fake-vault reopen, sidebar setup suppression | Manual pending: real OS vault and profile reopen |
-| AC-04 Five providers | Automated: `generation-integration.test.mjs` five real adapters → bridge → disposable Anki with fake replies | Live pending: all five services; form pending |
-| AC-05 Existing-deck count | Automated: `test_anki_cards.py`, `test_jobs_and_decks.py` exact counts, existing cards/scheduling preserved | Form pending: request 10 through UI; manual pending: review |
-| AC-06 Explicit deck name | Automated: real-backend collision suffix and preservation tests | Form pending; manual pending: selection and displayed name |
-| AC-07 AI deck name | Automated: generation naming/repair and SDK-to-Anki fake pipeline | Live pending: topic relevance; form pending |
-| AC-08 Counts 1 and 100 | Automated: engine exact-call tests and real-backend insertion counts | Form pending; manual pending: boundary entry |
-| AC-09 Invalid inputs | Automated: shared validators and engine zero-provider-call assertions | Form pending: inline errors and entry handling |
-| AC-10 Difficulty | Automated: `generation.test.mjs` difficulty/language prompt assertions | Live pending: NFR-08 sample and ≥80% human rating; form pending |
+| AC-04 Five providers | Automated: five real adapters → bridge → disposable Anki with fake replies; production form reaches the same engine using OpenAI | Live pending: all five services; manual pending: real form |
+| AC-05 Existing-deck count | Automated: production form inserts exactly 10 into a real existing deck; backend tests preserve existing cards/scheduling | Manual pending: real Qt form and review |
+| AC-06 Explicit deck name | Automated: form supplied-name creation, backend collision suffix and preservation tests | Manual pending: selection and displayed name in Qt |
+| AC-07 AI deck name | Automated: form AI naming/retained retry and SDK-to-Anki fake pipeline | Live pending: topic relevance; manual pending: real form |
+| AC-08 Counts 1 and 100 | Automated: form boundary validation, engine exact-call tests and real-backend insertion counts | Manual pending: real boundary entry |
+| AC-09 Invalid inputs | Automated: form inline errors/no engine calls, shared validators and engine zero-provider-call assertions | Manual pending: real webview input/accessibility |
+| AC-10 Difficulty | Automated: form all three choices and engine difficulty/language prompt assertions | Live pending: NFR-08 sample and ≥80% human rating |
 | AC-11 Invalid output repair | Automated: engine malformed/empty/duplicate/short/excess output budgets; fake pipeline zero writes on failure | Live pending: model behavior |
-| AC-12 Generation failures | Automated: shared classification, engine timeout/errors, atomic backend failure checks | Form pending: preserved fields/actionable retry; live pending: services |
-| AC-13 Duplicate submission | Automated: bridge replay, durable commit replay and no reinsertion | Form pending: double-click Generate |
+| AC-12 Generation failures | Automated: form preserves fields/actions, shared classification, engine timeout/errors, atomic backend failure checks | Manual pending: real UI errors; live pending: services |
+| AC-13 Duplicate submission | Automated: synchronous production form double-submit inserts once; bridge/durable replay does not reinsert | Manual pending: real double-click timing |
 | AC-14 Cancel/profile switch | Automated: engine late responses, coordinator/bridge ownership, real-backend canceled write guards | Manual pending: UI cancel/switch; live pending: provider cancellation |
-| AC-15 Destination/type changes | Automated: real-backend deleted/filtered destination, incompatible type, non-destructive replacement | Manual pending: user-driven repair; form pending |
+| AC-15 Destination/type changes | Automated: real-backend deleted/filtered destination/type repair; form preserves missing selection, diagnostic and repair actions | Manual pending: user-driven repair in real Qt |
 | AC-16 Write failure | Automated: real-backend rollback/compensation preserves pre-existing data | Manual pending: actual error presentation |
 | AC-17 One Undo | Automated: real backend Undo/Redo for cards, deck, type and prior scheduling | Manual pending: Anki Undo menu interaction |
 | AC-18 Inert content | Automated: real Anki rendering escape tests, bundle DOM text insertion, restricted bridge sender | Manual pending: real webview/card interaction |
 | AC-19 Secret exclusion | Automated: fake-vault persistence/log/exception/state checks, proxy scrubbing and packaged-data exclusion | Manual pending: actual stores/platform diagnostics |
 | AC-20 Interrupted response | Automated: durable status recovery, restart/tag reconciliation, unresolved evidence blocks writes | Manual pending: actual Anki restart/inspection |
 | AC-21 Connection tests | Automated: all five SDK adapters, fake connection outcomes, verification preserved on network failure | Live pending: real outcomes; manual pending: native button |
-| AC-22 Repeated topic duplicates | Automated: avoid-list accumulation; full Python casefold/deck checks including filtered cards and >200 hints | Live pending: actual repeated-topic output; form pending |
+| AC-22 Repeated topic duplicates | Automated: avoid-list accumulation; full Python casefold/deck checks including filtered cards and >200 hints | Live pending: actual repeated-topic output |
 | AC-23 View cards | Automated: runtime saved-tag search and bundle button dispatch | Manual pending: real Browser shows precisely the job's cards |
-| AC-24 Retained retry | Automated: partial-failure pipeline retains 25 and generates only missing 75; changed inputs discard cache | Form pending: Retry button/input-edit wiring |
+| AC-24 Retained retry | Automated: engine 25/75 scenario plus actual form Retry retains 25 and calls only for missing five; form edits invalidate cache | Manual pending: real Retry/input interaction |
 | AC-25 Panel lifecycle | Automated: `test_sidebar.py` first opening, visibility persistence, hide without cancellation | Manual pending: real Qt docking and menu interaction |
 | AC-26 Upgrade | Automated: `test_packaging.py` disposable replacement simulation preserves two profiles and fake OS-key references; installed-module reopen needs no setup | Manual pending: real Anki installation/upgrade and OS store |
 | AC-27 Allowlist | Automated: `test_proxy_bridge.py` invalid host/path/redirect refusal before credential delivery | Live pending: real provider routing compatibility |
@@ -444,12 +501,12 @@ All automated provider calls use fake replies and fake keys.
 These tests do not certify the full software requirements specification. The following are not implemented or covered end to end yet:
 
 - Provider API calls, SDK model compatibility, real credential stores and native onboarding behavior, and live transport retry/cancellation behavior.
-- User-driven form/Retry controls and real-model naming, generation, repair behavior, relevance, and difficulty quality.
-- Real provider compatibility, real Qt rendering, and user-driven review sessions. The commit bridge is authorized and tested; a working generation form is still pending.
+- Real-model naming, generation, repair behavior, relevance, and difficulty quality.
+- Real provider compatibility, real Qt rendering, accessibility, and user-driven review sessions. The form is wired and tested with DOM doubles and real backend operations; it is not a real Qt UI test.
 - Live TLS/authentication/model behavior and cancellation at real providers. Browser compatibility has been checked in a browser-only VM, with DOM/Qt doubles. The optional loopback test exercises local HTTP only. OS credential operations and setup/settings dialog logic still require real-platform verification.
 - User-edited CSS, arbitrary note types, other card formats, or AI answer correctness.
 
-Use `ApplicationRuntime.start_configured_job()` and `add_cards()` when connecting the generation UI. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel currently displays job state and offers native Settings, recovery, and repair controls; it does not yet offer a working generation form. Retry guidance is displayed from the runtime's action state; the generation Retry button belongs to that future form.
+The generation UI uses `ApplicationRuntime.start_configured_job()` and `add_cards()` through the guarded bridge. The low-level `insert_basic_cards()` function is used directly only by tests that exclusively own a disposable collection. The panel offers the form, Generate/Retry/Cancel, View cards, native Settings, recovery, and repair controls. Milestone 7's owner verification tooling remains to be built.
 
 The pinned integration target and packaged minimum are Anki **26.9.3**. Real Qt compatibility remains unverified. The GitHub Actions workflow runs these suites and packages artifacts on Windows, Linux, and macOS when the project is placed in a GitHub repository; adding that workflow is not evidence those remote jobs have already passed.
 

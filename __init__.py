@@ -176,6 +176,8 @@ def toggle_sidebar(_checked=False) -> None:
     runtime.store.update_settings(panelVisible=visible)
     sidebar.setVisible(visible)
     menu_action.setChecked(visible)
+    if visible:
+        sidebar.widget().eval("window.wayoomPanel && window.wayoomPanel.refreshDecks();")
     refresh_status()
 
 def close_sidebar() -> None:

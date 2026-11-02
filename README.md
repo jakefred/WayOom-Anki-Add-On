@@ -1,14 +1,20 @@
 # WayOom
 
 WayOom generates plain-text Basic flashcards with a provider key you supply.
-This is an **incomplete development build**: the generation engine and native
-settings are implemented, but the generation form (milestone 5) is still pending.
+This is a **development build** with a generation form and native settings.
 Live providers, real Qt/webview behavior, and actual OS credential stores have
 not been verified. Do not treat this package as a production release.
 
 Requires Anki **26.9.3 or later** on desktop. That minimum is the tested backend
 target, not a claim that every later Anki version or platform has been verified.
 No Node.js, npm, terminal service, or dependency installation is needed by users.
+
+Open WayOom from Anki's Tools menu and configure a provider in Settings. Choose
+an existing deck or Create new deck, enter a topic and 1–100 cards, select a
+difficulty, then Generate. Leave a new deck's name blank for AI naming.
+Cancel is available before addition begins; use Anki Undo after completion.
+After a generation failure, Retry with unchanged inputs reuses validated drafts.
+Changing any input discards those drafts. View cards opens the completed batch.
 
 For a disposable test installation, use Anki's **Tools → Add-ons → Install from
 file**, select `wayoom-0.1.0.ankiaddon`, and restart Anki. The package identity is

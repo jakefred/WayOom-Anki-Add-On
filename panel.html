@@ -1,31 +1,69 @@
 ﻿<style>
-  body {
-    font-family: sans-serif;
-    padding: 24px;
-  }
-
-  .panel {
-    padding: 24px;
-    border: 1px solid #888;
-    border-radius: 12px;
-  }
-
-  button {
-    padding: 10px 16px;
-    cursor: pointer;
-  }
+  :root { color-scheme: light dark; }
+  body { font-family: sans-serif; margin: 0; padding: 20px; color: #202124; background: #fff; }
+  body.nightMode, .nightMode body { color: #eee; background: #202124; }
+  .nightMode { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) { body { color: #eee; background: #202124; } }
+  .panel { max-width: 42rem; margin: auto; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  .header, .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .header { justify-content: space-between; }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  label { display: block; margin: 16px 0 6px; font-weight: 600; }
+  input, select, textarea { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid #888; border-radius: 4px; }
+  textarea { resize: vertical; min-height: 6rem; }
+  button { padding: 8px 12px; font: inherit; cursor: pointer; }
+  .hint { font-size: .9rem; }
+  .error { color: #b3261e; font-weight: 600; margin: 6px 0; }
+  body.nightMode .error, .nightMode body .error { color: #ffb4ab; }
+  @media (prefers-color-scheme: dark) { .error { color: #ffb4ab; } }
+  [aria-invalid="true"] { border-color: currentColor; outline: 1px solid currentColor; }
+  [hidden] { display: none !important; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible,
   button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
   button:disabled { cursor: default; }
 </style>
 
 <section class="panel">
-  <h1>WayOom</h1>
-  <p id="message" role="status" aria-live="polite">Ready</p>
+  <div class="header"><h1>WayOom</h1><button id="settings" type="button">Settings</button></div>
   <p id="provider"></p>
-  <button id="settings">Settings</button>
-  <button id="cancel" hidden>Cancel generation</button>
-  <button id="view-cards" hidden>View cards</button>
-  <button id="repair-note-type" hidden>Create replacement note type</button>
+  <form id="generation-form" novalidate>
+    <fieldset id="form-fields">
+      <legend class="hint">Generate Basic front/back cards</legend>
+      <label for="destination">Destination</label>
+      <select id="destination" aria-describedby="destination-error deck-status"><option value="">Choose a deck</option><option value="new">Create new deck</option></select>
+      <p id="destination-error" class="error" role="alert"></p>
+      <button id="refresh-decks" type="button">Refresh decks</button>
+      <p id="deck-status" class="hint" role="status"></p>
+      <div id="new-deck-fields" hidden>
+        <label for="deck-name">New deck name (optional)</label>
+        <input id="deck-name" type="text" autocomplete="off" aria-describedby="deck-name-hint deck-name-error">
+        <p id="deck-name-hint" class="hint">Leave blank for AI naming. Create a top-level deck; existing names get a numeric suffix.</p>
+        <p id="deck-name-error" class="error" role="alert"></p>
+      </div>
+      <label for="card-count">Number of cards</label>
+      <input id="card-count" type="number" min="1" max="100" step="1" value="10" required aria-describedby="card-count-error">
+      <p id="card-count-error" class="error" role="alert"></p>
+      <label for="topic">Topic</label>
+      <textarea id="topic" rows="4" required aria-describedby="topic-hint topic-error"></textarea>
+      <p id="topic-hint" class="hint">Be specific about what to learn. Up to 2,000 characters.</p>
+      <p id="topic-error" class="error" role="alert"></p>
+      <label for="difficulty">Difficulty</label>
+      <select id="difficulty" aria-describedby="difficulty-hint difficulty-error">
+        <option value="beginner">Beginner</option><option value="intermediate" selected>Intermediate</option><option value="advanced">Advanced</option>
+      </select>
+      <p id="difficulty-hint" class="hint">Beginner: facts and definitions. Intermediate: relationships and application. Advanced: nuanced distinctions and multi-step reasoning, with concise answers.</p>
+      <p id="difficulty-error" class="error" role="alert"></p>
+    </fieldset>
+    <div class="actions"><button id="generate" type="submit" disabled>Generate</button><button id="retry" type="button" hidden>Retry</button></div>
+  </form>
+  <div role="status" aria-live="polite" aria-atomic="true"><p><strong id="state-label">Ready</strong></p><p id="message">Loading profile…</p></div>
+  <p id="retained" class="hint"></p>
+  <div class="actions">
+    <button id="cancel" type="button" hidden>Cancel generation</button>
+    <button id="view-cards" type="button" hidden>View cards</button>
+    <button id="repair-note-type" type="button" hidden>Create replacement note type</button>
+  </div>
   <p id="failure-action"></p>
   <div id="recovery-jobs"></div>
 </section>

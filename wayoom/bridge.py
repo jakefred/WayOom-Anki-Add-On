@@ -70,6 +70,13 @@ class Bridge:
             if op == "ready" and not payload:
                 self.client_ready = True
                 self.reply(rpc_id, {})
+            elif op == "destinations" and not payload:
+                from .operations import list_destinations_in_background
+                list_destinations_in_background(
+                    self.runtime.parent, self.runtime.collection,
+                    coordinator=self.runtime.coordinator, profile=self.profile,
+                    on_complete=lambda decks: self.reply(rpc_id, {"decks": decks}),
+                    on_failure=lambda _error: self.reply(rpc_id, error="refused"))
             elif op == "start" and set(payload) == {"request", "startToken"}:
                 token = payload["startToken"]
                 if not self._valid_token(token) or token in self._canceled_starts or self.testing:

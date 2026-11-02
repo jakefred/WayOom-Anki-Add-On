@@ -10,7 +10,7 @@ from types import ModuleType
 import unittest
 from unittest.mock import Mock, patch
 
-from wayoom.operations import add_cards_in_background, repair_type_in_background
+from wayoom.operations import add_cards_in_background, repair_type_in_background, list_destinations_in_background
 from wayoom.validation import ValidationError
 
 FIXTURES = json.loads((Path(__file__).parents[1] / "fixtures" / "validation.json").read_text(encoding="utf-8"))
@@ -86,3 +86,22 @@ class OperationTests(unittest.TestCase):
         coordinator.require_profile.assert_called_once_with("profile", col)
         self.cards.repair_basic_notetype.assert_called_once_with(col, self.store)
         col.merge_undo_entries.assert_called_once_with(col.add_custom_undo_entry.return_value)
+
+    def test_destination_listing_is_read_only_and_checks_profile_before_reading(self):
+        self.operations.QueryOp = Mock()
+        self.cards.list_destinations = Mock(return_value=[{"deckId": 1, "name": "Full::Name"}])
+        coordinator, done, failed = Mock(), Mock(), Mock()
+        list_destinations_in_background(self.parent, self.collection, coordinator=coordinator,
+                                        profile="a", on_complete=done, on_failure=failed)
+        options = self.operations.QueryOp.call_args.kwargs
+        self.assertIs(options["success"], done)
+        self.cards.list_destinations.assert_not_called()
+        with self.assertRaisesRegex(ValidationError, "profile changed"):
+            options["op"](object())
+        self.cards.list_destinations.assert_not_called()
+        self.assertEqual(options["op"](self.collection), [{"deckId": 1, "name": "Full::Name"}])
+        coordinator.require_profile.assert_called_once_with("a", self.collection)
+        coordinator.require_profile.side_effect = ValidationError("Stale profile")
+        with self.assertRaisesRegex(ValidationError, "Stale"):
+            options["op"](self.collection)
+        self.cards.list_destinations.assert_called_once()

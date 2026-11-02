@@ -1,4 +1,6 @@
-"""Application lifecycle and authorized entry points for the future generator UI."""
+"""Application lifecycle and authorized entry points for the generation UI."""
+from hashlib import sha256
+import json
 
 from .jobs import JobCoordinator
 from .operations import add_cards_in_background, recover_in_background, repair_type_in_background
@@ -203,10 +205,26 @@ class ApplicationRuntime:
 
     def panel_state(self):
         state = self._panel_state()
+        settings = self.store.settings() if self.store else {}
+        # Changes to model/key references invalidate drafts without exposing the
+        # references or profile identity to the form. Availability matters too.
+        active = self.configuration["activeProviderId"]
+        provider_config = settings.get("providers", {}).get(active, {})
+        configuration = {"active": active, "credentialRef": provider_config.get("credentialRef"),
+                         "modelId": model_id(active, provider_config) if active else None,
+                         "available": self.configuration["providers"].get(active, {}).get("available", False)}
+        configuration_token = sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
+        unresolved = self.store and any(item["state"] in {"pending", "uncertain"} for item in self.store.jobs())
+        can_generate = bool(self.profile is not None and self.ready and not self.repairing
+                            and not unresolved and not self.configuration["setupRequired"]
+                            and state["state"] not in {"generating", "validating", "adding"}
+                            and state.get("action") not in {"inspect", "reopen-profile", "repair-note-type"})
         if state["state"] == "ready" and self.configuration["setupRequired"]:
             state["message"] = "Setup required. Open Settings to configure a provider."
         return {**state, "setupRequired": self.configuration["setupRequired"],
-                "configuredProvider": self.configuration["activeProviderId"]}
+                "configuredProvider": self.configuration["activeProviderId"],
+                "profileEpoch": self._epoch, "profileReady": self.profile is not None and self.ready,
+                "configurationToken": configuration_token, "canGenerate": can_generate}
 
     def _panel_state(self):
         recovery_jobs = [item["requestId"] for item in self.store.jobs()
@@ -214,11 +232,11 @@ class ApplicationRuntime:
         if recovery_jobs:
             return {"state": "failed", "message": "Inspect previous jobs, then acknowledge them to enable generation. Acknowledgment deletes no cards.",
                     "canView": False, "recoveryJobs": recovery_jobs, "action": "inspect"}
+        if self.repairing:
+            return {"state": "repairing", "message": "Creating a replacement note type…", "canView": False}
         if self.error:
             return {"state": "failed", "message": self.error, "canView": False,
                     "action": self.failure_action}
-        if self.repairing:
-            return {"state": "repairing", "message": "Creating a replacement note type…", "canView": False}
         if self.profile is None:
             return {"state": "ready", "message": "Ready", "canView": False}
         if not self.ready:

@@ -2,20 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { panelDocument } from './panel-dom.mjs';
 
 test('self-contained browser bundle loads SDK and updates the panel without Node globals', () => {
-  const makeElement = () => ({
-    addEventListener(event, callback) { this[event] = callback; },
-    replaceChildren(...children) { this.children = children; },
-    append(...children) { this.children = children; },
-  });
-  const elements = Object.fromEntries(['message', 'provider', 'cancel', 'view-cards',
-    'repair-note-type', 'failure-action', 'recovery-jobs', 'settings'].map(id => [
-    `#${id}`, makeElement(),
-  ]));
+  const { document, elements } = panelDocument();
   const commands = [];
   const context = vm.createContext({
-    window: {}, document: { querySelector: selector => elements[selector], createElement: makeElement },
+    window: {}, document,
     pycmd: command => {
       if (command.startsWith('wayoom:v1:rpc:')) {
         const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
@@ -44,7 +37,11 @@ test('self-contained browser bundle loads SDK and updates the panel without Node
   context.window.wayoomSetState({ state: 'complete', message: 'Done', canView: true });
   assert.equal(elements['#cancel'].hidden, true);
   assert.equal(elements['#view-cards'].hidden, false);
+  // Cancellation uses the engine while a job is running. A native fallback
+  // remains for Python-owned jobs; insertion's disabled button sends nothing.
+  context.window.wayoomSetState({ state: 'generating', message: 'Working' });
   elements['#cancel'].click();
+  context.window.wayoomSetState({ state: 'complete', message: 'Done', canView: true });
   elements['#view-cards'].click();
   assert.deepEqual(commands, ['wayoom:v1:cancel', 'wayoom:v1:view-cards']);
   context.window.wayoomSetState({ state: 'failed', message: 'Inspect', recoveryJobs: ['job-1'] });

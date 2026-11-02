@@ -187,6 +187,9 @@ with tempfile.TemporaryDirectory(prefix="anki-test-engine-" if "--generation" in
         elif operation == "fixture-engine-stats":
             bridge.reply(message["id"], {"count": collection.card_count(), "decks": [deck.name for deck in collection.decks.all_names_and_ids()],
                                         "records": records, "job": runtime.coordinator.snapshot(runtime.profile)})
+        elif operation == "fixture-panel-state":
+            runtime.refresh_configuration()
+            bridge.reply(message["id"], runtime.panel_state())
         elif operation == "fixture-start":
             job = runtime.coordinator.snapshot(runtime.profile)
             if job and job["state"] in {"generating", "validating"}:

@@ -72,6 +72,17 @@ class BridgeCollectionTests(unittest.TestCase):
         self.rpc("commit", payload)
         self.assertEqual(self.col.card_count(), 0)
 
+    def test_destination_rpc_lists_full_normal_deck_ids_only_and_rejects_payloads(self):
+        hierarchical = self.col.decks.id("Parent::Child")
+        filtered = self.col.decks.new_filtered("Filtered")
+        result = self.rpc("destinations", {})
+        self.assertTrue(result["ok"])
+        decks = result["result"]["decks"]
+        self.assertIn({"deckId": hierarchical, "name": "Parent::Child"}, decks)
+        self.assertNotIn(filtered, [deck["deckId"] for deck in decks])
+        self.assertFalse(self.rpc("destinations", {"profile": "another"})["ok"])
+        self.assertEqual(self.col.card_count(), 0)
+
     def test_full_deck_casefold_check_includes_filtered_card_beyond_200_front_hint(self):
         for offset in (0, 100, 200):
             count = 100 if offset < 200 else 1

@@ -46,6 +46,43 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.runtime.view_cards("unknown")
 
+    def test_panel_eligibility_and_configuration_token_never_expose_key_or_reference(self):
+        self.runtime.open_profile("a", self.col)
+        self.assertFalse(self.runtime.panel_state()["canGenerate"])
+        self.recovery.call_args.kwargs["on_complete"]({})
+        self.assertFalse(self.runtime.panel_state()["canGenerate"])
+        service, store = self.runtime.credentials, self.runtime.store
+        reference = service.save_key(store, "openai", "fake-private-key", session_only=True)
+        service.select_provider(store, "openai")
+        self.runtime.refresh_configuration()
+        state = self.runtime.panel_state()
+        self.assertTrue(state["canGenerate"])
+        self.assertTrue(state["profileReady"])
+        self.assertNotIn("fake-private-key", str(state))
+        self.assertNotIn(reference, str(state))
+        self.assertEqual(state["configurationToken"], self.runtime.panel_state()["configurationToken"])
+        providers = store.settings()["providers"]
+        providers["openai"]["connectionStatus"] = "verified"
+        providers["openai"]["verifiedModelId"] = service.summary(store)["providers"]["openai"]["modelId"]
+        store.update_settings(providers=providers)
+        self.runtime.refresh_configuration()
+        self.assertEqual(state["configurationToken"], self.runtime.panel_state()["configurationToken"])
+        service.save_key(store, "anthropic", "fake-inactive-key", session_only=True)
+        self.runtime.refresh_configuration()
+        self.assertEqual(state["configurationToken"], self.runtime.panel_state()["configurationToken"])
+        job = self.runtime.start_configured_job(self.request)
+        self.assertFalse(self.runtime.panel_state()["canGenerate"])
+        self.runtime.fail_generation(job["request"]["requestId"], "network", "cards")
+        self.assertTrue(self.runtime.panel_state()["canGenerate"])
+        service.save_key(store, "openai", "fake-replaced-key", session_only=True)
+        self.runtime.refresh_configuration()
+        self.assertNotEqual(state["configurationToken"], self.runtime.panel_state()["configurationToken"])
+        store.prepare({**self.request, "requestId": "pending"})
+        self.assertFalse(self.runtime.panel_state()["canGenerate"])
+        self.runtime.close_profile()
+        self.assertFalse(self.runtime.panel_state()["canGenerate"])
+        self.assertNotEqual(state["profileEpoch"], self.runtime.panel_state()["profileEpoch"])
+
     def test_rejected_payload_and_definitive_failure_allow_retry(self):
         self.runtime.open_profile("a", self.col)
         self.recovery.call_args.kwargs["on_complete"]({})

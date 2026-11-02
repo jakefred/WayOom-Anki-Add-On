@@ -72,6 +72,20 @@ def repair_type_in_background(parent, expected_collection, *, coordinator, store
             .failure(on_failure).run_in_background())
 
 
+def list_destinations_in_background(parent, expected_collection, *, coordinator, profile,
+                                    on_complete, on_failure):
+    from aqt.operations import QueryOp
+    from .cards import list_destinations
+
+    def read(col):
+        if col is not expected_collection:
+            raise ValidationError("The active Anki profile changed")
+        coordinator.require_profile(profile, col)
+        return list_destinations(col)
+
+    return QueryOp(parent=parent, op=read, success=on_complete).failure(on_failure).run_in_background()
+
+
 def check_fronts_in_background(parent, expected_collection, *, coordinator, store, profile,
                                request, fronts, on_complete, on_failure):
     from aqt.operations import QueryOp
