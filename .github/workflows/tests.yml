@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,15 +16,16 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: requirements-test.txt
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: python -m pip install -r requirements-test.txt
@@ -32,7 +34,7 @@ jobs:
       - run: npm test
       - run: python -m unittest discover -s tests/python -v
       - run: python -m unittest discover -s tests/integration -v
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: wayoom-${{ matrix.os }}
           path: |

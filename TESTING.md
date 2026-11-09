@@ -58,6 +58,15 @@ The default tests require no API keys, provider account, open Anki window, or re
 `web/dist/panel.js` is ignored by Git and served through Anki's add-on web exports;
 run `npm run build` before loading a source checkout in Anki. The `.ankiaddon`
 includes this generated asset. CI explicitly builds after `npm ci --ignore-scripts`.
+
+The workflow's pip cache explicitly hashes `requirements-test.txt`; this project
+does not use the default `requirements.txt`/`pyproject.toml` names. GitHub's helper
+actions use their Node-24-based v6 releases. Tests run on push, pull request, or
+**Actions → Tests → Run workflow** after the workflow is on the default branch.
+After a workflow fix, push and inspect a new run; rerunning an older failed run
+uses that older run's workflow. Runner-image migration and capacity notices are
+informational, separate from setup or test failures.
+
 The build test loads the bundle in a Node VM with browser globals and a DOM double,
 without Node module globals, initializes all five adapters with a required custom
 fetch, and exercises panel updates and bridge button commands. This proves bundle
