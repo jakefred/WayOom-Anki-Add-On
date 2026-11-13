@@ -12,7 +12,7 @@ The project has local validation, profile-bound job authorization, nonsecret per
 
 The GUI scheduling and sidebar unit tests use explicit Qt/`aqt` test doubles. They do **not** claim to exercise a real Qt window. The backend integration suite does **not** mock card creation, rendering, persistence, or Undo. Fault-injection tests deliberately corrupt one backend request or alter a returned count to test failure handling.
 
-The sidebar tests verify automatic initial opening, Tools-menu toggling, per-profile visibility persistence, preservation of running jobs while hidden, profile-close invalidation, and restriction of panel commands to the current webview. Recovery inspection and acknowledgment commands accept only saved uncertain job IDs. A repair command schedules guarded note-type replacement. These tests use Qt doubles; actual window visibility, rendering, browser opening, and interaction during review still require real Qt verification.
+The sidebar tests verify automatic initial opening, the toolbar and Tools-menu toggles, per-profile visibility persistence, preservation of running jobs while hidden, focus restoration, profile-close invalidation, and restriction of panel commands to the current webview. Recovery inspection and acknowledgment commands accept only saved uncertain job IDs. A repair command schedules guarded note-type replacement. These tests use Qt doubles. The owner reported on November 13, 2026 that the enlarged cream toolbar button looks and works well in Anki; the OS, Anki version, theme, and artifact hash were not recorded. Both themes were also inspected in an offscreen Qt preview using Anki's toolbar stylesheet. Full review shortcuts, generation while hidden, browser opening, and the broader Anki UI workflow still need recorded verification.
 
 ## Supported card contract
 
@@ -573,7 +573,7 @@ All automated provider calls use fake replies and fake keys.
 | AC-22 Repeated topic duplicates | Automated: avoid-list accumulation; full Python casefold/deck checks including filtered cards and >200 hints | Live pending: actual repeated-topic output |
 | AC-23 View cards | Automated: runtime saved-tag search and bundle button dispatch | Manual pending: real Browser shows precisely the job's cards |
 | AC-24 Retained retry | Automated: engine 25/75 scenario plus actual form Retry retains 25 and calls only for missing five; form edits invalidate cache | Manual pending: real Retry/input interaction |
-| AC-25 Panel lifecycle | Automated: `test_sidebar.py` first opening, visibility persistence, hide without cancellation | Manual pending: real Qt docking and menu interaction |
+| AC-25 Panel lifecycle | Automated: `test_sidebar.py` first opening, toolbar/menu toggles, visibility persistence, hide without cancellation, focus restoration | Owner reported toolbar appearance and toggle working in Anki; manual evidence pending for review shortcuts, running jobs while hidden, and profile restore |
 | AC-26 Upgrade | Automated: `test_packaging.py` disposable replacement simulation preserves two profiles and fake OS-key references; installed-module reopen needs no setup | Manual pending: real Anki installation/upgrade and OS store |
 | AC-27 Allowlist | Automated: `test_proxy_bridge.py` invalid host/path/redirect refusal before credential delivery | Live pending: real provider routing compatibility |
 | AC-28 Call authorization | Automated: coordinator/bridge budgets, stale-owner refusal, original-batch retry limits | Manual pending: real lifecycle timing |

@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from urllib.parse import quote
 from threading import current_thread, main_thread
 # import the main window object (mw) from aqt
 from aqt import gui_hooks, mw
@@ -20,7 +21,55 @@ menu_action = QAction("WayOom", mw)
 menu_action.setCheckable(True)
 menu_action.setEnabled(False)
 mw.form.menuTools.addAction(menu_action)
-mw.addonManager.setWebExports(__name__, r"web/dist/.*\.js")
+mw.addonManager.setWebExports(__name__, r"(?:web/dist/.*\.js|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
+
+
+def toolbar_link(links, toolbar) -> None:
+    """Place the persistent WayOom toggle immediately after Anki's Sync link."""
+    command = "wayoom-toggle"
+    toolbar.link_handlers[command] = toggle_sidebar
+    visible = sidebar is not None and not sidebar.isHidden() and runtime.store is not None
+    enabled = runtime.store is not None
+    addon_id = mw.addonManager.addonFromModule(__name__)
+    icon = quote(f"/_addons/{addon_id}/assets/WayOom Korean Brush Calligraphy App Icon.png", safe="/")
+    title = "Hide WayOom" if visible else "Show WayOom"
+    inactive_style = "" if enabled else "opacity:.5;"
+    # Crop only the image's empty margins. The visible brush lettering occupies
+    # roughly x=50..1210, y=305..995 of the original 1254-square PNG.
+    # Anki's links use em-sized text; this keeps the ink near that height.
+    link = (
+        f'<a class="hitem" id="wayoom-toggle" tabindex="-1" aria-label="WayOom" '
+        f'aria-expanded="{str(visible).lower()}" aria-disabled="{str(not enabled).lower()}" '
+        f'title="{title}" href="#" onclick="return pycmd(\'{command}\')" '
+        f'style="vertical-align:middle;background:#fcf7e9;{inactive_style}">'
+        f'<span style="display:inline-block;position:relative;overflow:hidden;'
+        f'width:1.74em;height:1.05em;vertical-align:-.16em">'
+        f'<img src="{icon}" alt="" aria-hidden="true" draggable="false" '
+        f'style="position:absolute;width:1.881em;height:1.881em;left:-.075em;top:-.458em">'
+        f'</span></a>'
+    )
+    # Anki calls this hook with fresh links on each draw. Guard in case another
+    # hook invokes us twice against the same list.
+    if not any('id="wayoom-toggle"' in item for item in links):
+        sync_index = next((index for index, item in enumerate(links) if 'id="sync"' in item), len(links) - 1)
+        links.insert(sync_index + 1, link)
+
+
+def sync_toolbar_toggle() -> None:
+    toolbar = getattr(mw, "toolbar", None)
+    if toolbar is None:
+        return
+    visible = sidebar is not None and not sidebar.isHidden() and runtime.store is not None
+    enabled = runtime.store is not None
+    # The toolbar may be between draws; a missing node is harmless.
+    toolbar.web.eval(
+        "(() => { const link = document.getElementById('wayoom-toggle'); if (!link) return;"
+        f"link.setAttribute('aria-expanded', {json.dumps(str(visible).lower())});"
+        f"link.setAttribute('aria-disabled', {json.dumps(str(not enabled).lower())});"
+        f"link.title = {json.dumps('Hide WayOom' if visible else 'Show WayOom')};"
+        f"link.style.opacity = {json.dumps('' if enabled else '.5')};"
+        "})()"
+    )
 
 # Add the HTML sidebar to Anki's main window.
 def add_sidebar() -> None:
@@ -77,6 +126,7 @@ def profile_opened() -> None:
     status_timer.start()
     menu_action.setEnabled(True)
     menu_action.setChecked(visible)
+    sync_toolbar_toggle()
     if runtime.configuration["setupRequired"]:
         show_settings(welcome=True)
 
@@ -214,8 +264,11 @@ def toggle_sidebar(_checked=False) -> None:
     runtime.store.update_settings(panelVisible=visible)
     sidebar.setVisible(visible)
     menu_action.setChecked(visible)
+    sync_toolbar_toggle()
     if visible:
         sidebar.widget().eval("window.wayoomPanel && window.wayoomPanel.refreshDecks();")
+    else:
+        mw.web.setFocus()
     refresh_status()
 
 def close_sidebar() -> None:
@@ -229,6 +282,7 @@ def close_sidebar() -> None:
     status_timer.stop()
     menu_action.setEnabled(False)
     menu_action.setChecked(False)
+    sync_toolbar_toggle()
     if sidebar is None:
         return
     sidebar.widget().cleanup()
@@ -238,6 +292,7 @@ def close_sidebar() -> None:
 
 
 menu_action.triggered.connect(toggle_sidebar)
+gui_hooks.top_toolbar_did_init_links.append(toolbar_link)
 status_timer.timeout.connect(refresh_status)
 gui_hooks.profile_did_open.append(profile_opened)
 gui_hooks.profile_will_close.append(close_sidebar)

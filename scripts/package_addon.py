@@ -55,6 +55,8 @@ def package_files(root):
     for name in (*[f"{module}.py" for module in MODULES], "default_models.json", "provider_routes.json"):
         yield f"wayoom/{name}", text_bytes(root / "wayoom" / name)
     yield "web/dist/panel.js", text_bytes(root / "web/dist/panel.js")
+    icon = "assets/WayOom Korean Brush Calligraphy App Icon.png"
+    yield icon, (root / icon).read_bytes()
     yield "THIRD_PARTY_NOTICES.txt", js_notices(root)
     yield "vendor/manifest.json", text_bytes(root / "vendor/manifest.json")
     for name, content in runtime_files(root / "vendor"):

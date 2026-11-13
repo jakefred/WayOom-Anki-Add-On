@@ -3,6 +3,10 @@
 All boxes are **pending** until a person records evidence. Automated suites and
 the optional offscreen smoke do not complete this checklist.
 
+Owner feedback on November 13, 2026: the enlarged cream toolbar button looks
+and works well in Anki. The OS, Anki version, theme, and artifact hash were not
+recorded, so the lifecycle checks below remain open.
+
 Record the Git commit, artifact SHA-256, date, OS/architecture, Anki/Python/Qt
 versions, provider/model IDs, and pass/fail notes. Never include keys, outgoing
 auth headers, private topics, or raw provider errors in evidence.
@@ -49,8 +53,11 @@ explicit live checks. Do not weaken browser security to get a pass.
   Generate exactly 10 and inspect real reviewable cards. Create supplied-name
   and blank-name decks, including a collision suffix. Try 1 and 100. Existing
   cards and scheduling must remain unchanged. **AC-05/06/07/08.**
-- [ ] Double-click Generate; only one job/batch appears. Hide the panel during
-  generation/review and reopen it; the job continues and current state returns.
+- [ ] Double-click Generate; only one job/batch appears. Click the WayOom button
+  after Sync to hide the panel during generation/review, then click it to reopen;
+  the job continues and current state returns. Check the cream button's appearance
+  in both themes, review shortcuts after hiding, the Tools-menu toggle, and saved
+  visibility after a profile restart.
   Cancel during naming/cards, then switch profiles during another job; late
   responses must insert nothing. Adding disables Cancel and explains finishing.
   Canceling feedback appears immediately; after cancellation, Generate and

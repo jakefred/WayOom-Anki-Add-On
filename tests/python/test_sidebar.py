@@ -11,7 +11,7 @@ class SidebarTests(unittest.TestCase):
         aqt = ModuleType("aqt")
         aqt.mw = Mock()
         aqt.mw.pm.name = "profile-a"
-        aqt.gui_hooks = SimpleNamespace(profile_did_open=[], profile_will_close=[])
+        aqt.gui_hooks = SimpleNamespace(profile_did_open=[], profile_will_close=[], top_toolbar_did_init_links=[])
         qt = ModuleType("aqt.qt")
         qt.QAction, qt.QDockWidget, qt.QTimer, qt.QWidget, qt.Qt = Mock(), Mock(), Mock(), Mock(), Mock()
         qt.QDockWidget.return_value.setWidget.side_effect = lambda web: setattr(qt.QDockWidget.return_value.widget, "return_value", web)
@@ -46,6 +46,7 @@ class SidebarTests(unittest.TestCase):
 
     def test_import_registers_hook_without_opening_ui_or_collection(self):
         self.assertEqual(self.aqt.gui_hooks.profile_did_open, [self.addon.profile_opened])
+        self.assertEqual(self.aqt.gui_hooks.top_toolbar_did_init_links, [self.addon.toolbar_link])
         self.qt.QDockWidget.assert_not_called()
         self.aqt.mw.form.menuTools.addAction.assert_called_once_with(self.addon.menu_action)
 
@@ -105,7 +106,7 @@ class SidebarTests(unittest.TestCase):
         self.assertEqual(self.webview.AnkiWebView.return_value.stdHtml.call_args.kwargs["js"],
                          [f"/_addons/{self.aqt.mw.addonManager.addonFromModule.return_value}/web/dist/panel.js"])
         self.aqt.mw.addonManager.setWebExports.assert_called_once_with(
-            self.addon.__name__, r"web/dist/.*\.js")
+            self.addon.__name__, r"(?:web/dist/.*\.js|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
         self.aqt.mw.addDockWidget.assert_called_once()
 
     def test_profile_close_cleans_up_and_next_profile_can_reopen(self):
@@ -137,6 +138,7 @@ class SidebarTests(unittest.TestCase):
                    "cardCount": 1, "topic": "Biology", "difficulty": "intermediate", "providerId": "openai"}
         job = coordinator.start("profile-a", request, {})
         self.addon.toggle_sidebar()
+        self.aqt.mw.web.setFocus.assert_called_once()
         self.addon.toggle_sidebar()
         self.assertTrue(self.visible)
         self.assertEqual(coordinator.snapshot("profile-a")["request"], job["request"])
@@ -144,6 +146,26 @@ class SidebarTests(unittest.TestCase):
         self.webview.AnkiWebView.assert_called_once()
         self.addon.close_sidebar()
         self.assertEqual(coordinator.snapshot("profile-a")["state"], "canceled")
+
+    def test_toolbar_toggle_after_sync_stays_in_sync_with_tools_and_profile(self):
+        toolbar = SimpleNamespace(link_handlers={})
+        links = ['<a id="decks">Decks</a>', '<a id="sync">Sync</a>']
+        self.addon.toolbar_link(links, toolbar)
+        self.addon.toolbar_link(links, toolbar)
+        self.assertEqual(len(links), 3)
+        self.assertIn('aria-disabled="true"', links[-1])
+        self.addon.profile_opened()
+        fresh = ['<a id="sync">Sync</a>']
+        self.addon.toolbar_link(fresh, toolbar)
+        self.assertIn('aria-expanded="true"', fresh[-1])
+        self.assertIn('Hide WayOom', fresh[-1])
+        toolbar.link_handlers['wayoom-toggle']()
+        self.assertFalse(self.visible)
+        self.assertIn('"Show WayOom"', self.aqt.mw.toolbar.web.eval.call_args.args[0])
+        self.assertFalse(self.addon.menu_action.setChecked.call_args.args[0])
+        self.addon.toggle_sidebar()
+        self.assertTrue(self.visible)
+        self.assertIn('"Hide WayOom"', self.aqt.mw.toolbar.web.eval.call_args.args[0])
 
     def test_panel_commands_reject_other_webviews_and_unknown_actions(self):
         self.addon.profile_opened()

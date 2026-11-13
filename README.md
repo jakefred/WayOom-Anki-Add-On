@@ -2,7 +2,7 @@
 
 WayOom generates plain-text Basic flashcards with a provider key you supply.
 This is a **development build** with a generation form and native settings.
-Live providers, full Anki UI behavior, and actual OS credential stores have not
+Live providers, the full Anki UI workflow, and actual OS credential stores have not
 been verified. A limited offscreen Qt smoke passed; it does not certify those
 release gates. Do not treat this package as a production release.
 
@@ -24,8 +24,13 @@ storage location. **Use a different key** opens the replacement field; **Keep sa
 key** discards that unsaved replacement. Model-test progress and results appear in
 a large banner below the WayOom title.
 
-Open WayOom from Anki's Tools menu. Choose
-an existing deck or Create new deck, enter a topic and 1–100 cards, select a
+WayOom opens on the left when first installed. Click the cream WayOom icon
+immediately after Sync in Anki's top toolbar to hide the sidebar; click it again
+to restore it. The Tools → WayOom menu item does the same thing. Visibility is
+remembered for each profile. Hiding preserves the form and any running generation
+and returns focus to Anki for reviewing.
+
+Choose an existing deck or Create new deck, enter a topic and 1–100 cards, select a
 difficulty, then Generate. Leave a new deck's name blank for AI naming.
 Cancel is available before addition begins; use Anki Undo after completion.
 Cancel shows immediate feedback, discards retained drafts, and ignores late

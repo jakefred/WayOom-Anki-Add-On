@@ -45,6 +45,7 @@ class PackagingTests(unittest.TestCase):
             for required in ("__init__.py", "manifest.json", "panel.html", "README.md",
                              "wayoom/runtime.py", "wayoom/default_models.json",
                              "wayoom/provider_routes.json", "web/dist/panel.js",
+                             "assets/WayOom Korean Brush Calligraphy App Icon.png",
                              "vendor/runtime/common/keyring/__init__.py",
                              "vendor/runtime/common/win32ctypes/__init__.py",
                              "vendor/runtime/common/secretstorage/__init__.py"):
@@ -65,6 +66,8 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(manifest["package"], "wayoom")
             self.assertEqual(manifest["min_point_version"], 260903)
             self.assertEqual(manifest["human_version"], "0.1.7")
+            self.assertEqual(archive.read("assets/WayOom Korean Brush Calligraphy App Icon.png"),
+                             (ROOT / "assets/WayOom Korean Brush Calligraphy App Icon.png").read_bytes())
             self.assertIn(b"Remove all keys", archive.read("README.md"))
             notices = archive.read("THIRD_PARTY_NOTICES.txt").decode()
             self.assertIn("@ai-sdk/provider-utils 5.0.72", notices)
@@ -87,7 +90,7 @@ class PackagingTests(unittest.TestCase):
         root.mkdir()
         for name in ("__init__.py", "panel.html", "manifest.json", "README.md", "package.json", "package-lock.json"):
             shutil.copyfile(ROOT / name, root / name)
-        for name in ("wayoom", "web/dist", "vendor/wheels", "vendor/licenses"):
+        for name in ("wayoom", "web/dist", "vendor/wheels", "vendor/licenses", "assets"):
             shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "vendor/manifest.json", root / "vendor/manifest.json")
         lock = json.loads((ROOT / "package-lock.json").read_text())
