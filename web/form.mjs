@@ -24,12 +24,17 @@ export class GenerationPanel {
     this.progress = null;
     this.errors = {};
     this.recoveryKey = '';
+    this.difficultyEnabled = false;
     this.documents = new DocumentPanel(document, () => {
       this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
     }, openDocument);
     this.get('generation-form').addEventListener('submit', event => { event.preventDefault(); void this.submit(); });
     this.get('retry').addEventListener('click', () => { void this.submit(); });
     this.get('refresh-decks').addEventListener('click', () => { void this.refreshDecks(); });
+    this.get('difficulty-toggle').addEventListener('click', () => {
+      this.difficultyEnabled = !this.difficultyEnabled;
+      this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
+    });
     for (const id of ['destination', 'deck-name', 'card-count', 'topic', 'difficulty']) {
       this.get(id).addEventListener(['destination', 'difficulty'].includes(id) ? 'change' : 'input', () => {
         this.engine.discard();
@@ -71,7 +76,7 @@ export class GenerationPanel {
       destination: destination === 'new' ? { mode: 'new', name: this.get('deck-name').value }
         : { mode: 'existing', deckId: Number(destination) },
       cardCount: count === '' ? NaN : Number(count), topic: this.get('topic').value,
-      difficulty: this.get('difficulty').value, providerId: this.state.configuredProvider };
+      difficulty: this.difficultyEnabled ? this.get('difficulty').value : null, providerId: this.state.configuredProvider };
     if (this.documents.source) input.source = this.documents.source;
     const result = requestSchema.safeParse(input);
     if (!result.success) {
@@ -112,6 +117,7 @@ export class GenerationPanel {
       this.loading = false;
       this.decks = [];
       this.get('generation-form').reset();
+      this.difficultyEnabled = false;
       this.documents.clear('', false);
       this.clearErrors();
     } else if (this.state.configurationToken !== undefined && state.configurationToken !== this.state.configurationToken) {
@@ -235,12 +241,19 @@ export class GenerationPanel {
     }
     if (canceling) { label = 'Canceling'; message = 'Cancel requested. Waiting for the current operation to stop.'; }
     if (this.closed) { label = 'Canceled'; message = 'This profile has closed.'; }
+    const idle = display.state === 'ready' && !this.running && !canceling && !this.closed;
+    this.get('generation-status').hidden = idle;
+    if (idle) { label = ''; message = ''; }
     this.text('state-label', label);
     this.text('message', message);
     const provider = this.engine.active?.request?.providerId ?? (this.running ? this.state.configuredProvider
       : busy ? this.state.provider ?? this.state.configuredProvider : this.state.configuredProvider ?? this.state.provider);
-    this.text('provider', provider ? `Provider: ${providerNames[provider] ?? provider}` : 'Provider: not configured');
+    this.text('provider', provider ? `Current Provider: ${providerNames[provider] ?? provider}` : 'Current Provider: not configured');
     this.get('form-fields').disabled = busy || this.closed;
+    this.get('difficulty-toggle').disabled = busy || this.closed;
+    this.get('difficulty-toggle').setAttribute('aria-checked', String(this.difficultyEnabled));
+    this.get('difficulty-fields').hidden = !this.difficultyEnabled;
+    this.get('difficulty').disabled = !this.difficultyEnabled || busy || this.closed;
     this.documents.disabled = busy || this.closed;
     this.documents.render();
     this.get('new-deck-fields').hidden = this.get('destination').value !== 'new';

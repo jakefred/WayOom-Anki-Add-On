@@ -220,9 +220,9 @@ test('uncertain commits block Retry and Generate across input edits until the pr
 test('the form shows the newly active provider after canceled work from another provider', async () => {
   const h = await harness();
   h.panel.setState({ ...ready, state: 'canceled', provider: 'anthropic', configuredProvider: 'openai' });
-  assert.equal(h.elements['#provider'].textContent, 'Provider: OpenAI');
+  assert.equal(h.elements['#provider'].textContent, 'Current Provider: OpenAI');
   const pending = h.panel.submit();
-  assert.equal(h.elements['#provider'].textContent, 'Provider: OpenAI');
+  assert.equal(h.elements['#provider'].textContent, 'Current Provider: OpenAI');
   await pending;
 });
 
@@ -238,6 +238,7 @@ test('commit failures show the backend destination error and repair progress tak
 
 test('count boundaries and all difficulty choices reach the engine through the same form contract', async () => {
   const h = await harness();
+  h.elements['#difficulty-toggle'].click();
   for (const count of ['1', '100']) {
     for (const level of ['beginner', 'intermediate', 'advanced']) {
       h.elements['#card-count'].value = count; h.elements['#difficulty'].value = level;
@@ -246,4 +247,34 @@ test('count boundaries and all difficulty choices reach the engine through the s
       assert.equal(h.requests.at(-1).difficulty, level);
     }
   }
+});
+
+test('idle status is absent; optional difficulty preserves its choice and invalidates retained drafts', async () => {
+  const h = await harness();
+  assert.equal(h.elements['#generation-status'].hidden, true);
+  assert.equal(h.elements['#state-label'].textContent, '');
+  assert.equal(h.elements['#message'].textContent, '');
+  assert.equal(h.elements['#difficulty-fields'].hidden, true);
+  await h.panel.submit();
+  assert.equal(h.requests.at(-1).difficulty, null);
+  const discards = h.engine.discards;
+  h.elements['#difficulty-toggle'].click();
+  h.elements['#difficulty'].value = 'advanced';
+  h.elements['#difficulty'].dispatch('change');
+  for (let i = 0; i < 5; i++) h.panel.setState({ ...ready });
+  assert.equal(h.elements['#difficulty-toggle'].attributes['aria-checked'], 'true');
+  assert.equal(h.elements['#difficulty-fields'].hidden, false);
+  await h.panel.submit();
+  assert.equal(h.requests.at(-1).difficulty, 'advanced');
+  h.elements['#difficulty-toggle'].click();
+  assert.ok(h.engine.discards > discards);
+  await h.panel.submit();
+  assert.equal(h.requests.at(-1).difficulty, null);
+  h.elements['#difficulty-toggle'].click();
+  assert.equal(h.elements['#difficulty'].value, 'advanced');
+  h.panel.setState({ ...ready, state: 'generating', canGenerate: false });
+  assert.equal(h.elements['#generation-status'].hidden, false);
+  assert.equal(h.elements['#difficulty-toggle'].disabled, true);
+  h.panel.setState({ ...ready, profileEpoch: 2 });
+  assert.equal(h.elements['#difficulty-fields'].hidden, true);
 });

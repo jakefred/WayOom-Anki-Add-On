@@ -37,7 +37,7 @@ export const requestSchema = z.strictObject({
   cardCount: z.number().int().min(1).max(100),
   topic: z.string().transform(value => value.normalize('NFC').trim()).pipe(z.union([z.literal(''), text(2000)])),
   source: z.strictObject({ name: text(255), selection: text(256), text: text(60000) }).optional(),
-  difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
+  difficulty: z.enum(['beginner', 'intermediate', 'advanced']).nullable().optional().transform(value => value ?? null),
   providerId: z.enum(['openai', 'anthropic', 'google', 'xai', 'mistral']),
 }).superRefine((request, ctx) => {
   if (!request.topic && !request.source) ctx.addIssue({ code: 'custom', path: ['topic'], message: 'Enter a topic or attach a document.' });

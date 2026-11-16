@@ -12,6 +12,15 @@ const base = { requestId: 'document-job', destination: { mode: 'existing', deckI
   topic: '', difficulty: 'beginner', providerId: 'openai' };
 const source = { name: 'Lecture.txt', selection: 'Whole document', text: 'A cell membrane regulates transport.' };
 
+test('automatic difficulty normalizes to null and produces guidance without an implicit fixed level', () => {
+  const { difficulty, ...input } = { ...base, topic: 'Cell biology' };
+  const request = requestSchema.parse(input);
+  assert.equal(request.difficulty, null);
+  const prompt = generationPrompt({ request, stage: 'cards', count: 3 }).prompt;
+  assert.match(prompt, /No difficulty level is specified/);
+  assert.doesNotMatch(prompt, /undefined|Difficulty: intermediate/);
+});
+
 test('page ranges are bounded, deduplicated, sorted, and reject invalid/out-of-range selections', () => {
   assert.deepEqual(parsePageSelection(' 5, 1-3, 2 ', 6), [1, 2, 3, 5]);
   assert.deepEqual(parsePageSelection('', 3), [1, 2, 3]);

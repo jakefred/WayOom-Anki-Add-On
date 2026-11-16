@@ -39,4 +39,5 @@ jobs:
           name: wayoom-${{ matrix.os }}
           path: |
             dist/*.ankiaddon
+            dist/*-source.zip
             dist/*.sha256

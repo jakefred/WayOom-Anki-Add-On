@@ -54,6 +54,7 @@ class SettingsDialog(QDialog):
             QDialog#WayOomSettings {{ background: {bg}; color: {fg}; }}
             QLabel, QCheckBox {{ color: {fg}; background: transparent; }}
             QLabel#WayOomTitle {{ font-size: 20px; font-weight: 700; }}
+            QLabel#WayOomPageTitle {{ color: {muted}; }}
             QScrollArea {{ border: 0; background: transparent; }}
             QWidget#SetupBody {{ background: {bg}; }}
             QLineEdit, QComboBox {{ color: {fg}; background: {field}; border: 1px solid {border}; border-radius: 5px; padding: 9px; min-height: 20px; }}
@@ -79,9 +80,15 @@ class SettingsDialog(QDialog):
                                            Qt.TransformationMode.SmoothTransformation))
         self.logo.setFixedSize(88, 56)
         header.addWidget(self.logo)
-        title = self.label("Settings")
+        headings = QVBoxLayout()
+        headings.setSpacing(2)
+        title = self.label("WayOom")
         title.setObjectName("WayOomTitle")
-        header.addWidget(title)
+        headings.addWidget(title)
+        page_title = self.label("Settings")
+        page_title.setObjectName("WayOomPageTitle")
+        headings.addWidget(page_title)
+        header.addLayout(headings)
         header.addStretch()
         layout.addLayout(header)
         self.message = self.label("")
@@ -168,6 +175,13 @@ class SettingsDialog(QDialog):
         actions.addStretch()
         actions.addWidget(self.done_button)
         layout.addLayout(actions)
+        legal = QLabel('Copyright (C) 2026 WayOom contributors. No warranty. '
+                       'You may modify and redistribute under '
+                       f'<a style="color:{self._link_color}" href="https://www.gnu.org/licenses/agpl-3.0.html">AGPLv3 or later</a>. '
+                       f'<a style="color:{self._link_color}" href="https://github.com/jakefred/WayOom-Anki-Add-On">Source code</a>.')
+        legal.setWordWrap(True)
+        legal.setOpenExternalLinks(True)
+        layout.addWidget(legal)
         self.key.textChanged.connect(self.key_changed)
         self.provider.currentIndexChanged.connect(self.provider_changed)
         self.model.currentIndexChanged.connect(self.model_changed)

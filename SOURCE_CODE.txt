@@ -1,0 +1,47 @@
+WayOom source code and builds
+============================
+
+License: GNU AGPL version 3 or later. See LICENSE and NOTICE.
+Repository: https://github.com/jakefred/WayOom-Anki-Add-On
+
+Each release build produces both an installable .ankiaddon and a matching
+wayoom-VERSION-source.zip, each with a SHA-256 file. The source ZIP contains
+WayOom's editable Python/JavaScript sources, UI, original logo, dependency
+locks, credential wheels and build scripts. Generated browser bundles can
+be rebuilt from these files; they are not substitutes for editable source.
+
+To rebuild from a source ZIP or a matching repository checkout:
+
+1. Install Node.js 24 LTS (including npm) and Python 3.12.
+2. Extract the source ZIP and open a terminal in its top-level directory.
+3. Run: npm ci --ignore-scripts
+4. Run: python scripts/package_addon.py
+
+On Windows, use npm.cmd if PowerShell blocks npm.ps1. Depending on your
+Python installation, the Python command may be python3 or py -3.12.
+Building requires network access to download the pinned npm dependencies.
+The build does not require an API key, a provider request, an Anki profile,
+or installation of Anki itself.
+
+Output is written to dist/. In Anki, use Tools > Add-ons > Install from
+file to install the resulting .ankiaddon, then restart Anki. Node.js and
+Python build tools are not needed to run the installed add-on.
+
+package-lock.json pins JavaScript dependencies. web/document-assets.json
+pins PDF/OCR asset hashes. requirements-credentials.txt and vendor/manifest.json
+identify the credential dependencies and wheel hashes. These third-party
+components retain their own licenses; see the installed notices. npm package
+metadata and vendored wheel metadata identify their upstream projects.
+scripts/vendor_credentials.py is for maintainers updating pins, not normal builds.
+
+Release distributors must make the matching source archive available at no
+additional charge alongside the add-on download, or provide clear directions
+next to that download to equivalent source access. Publish the matching source
+ZIP and its checksum with every release, and link it from the AnkiWeb listing.
+A changing default branch alone may not match an older release. Preserve the
+release source archive and record/tag the corresponding repository commit.
+
+The build creates files locally; it does not upload a release, push a commit,
+or publish the source. Do not publish an add-on without its matching source.
+If distributing a modified version, preserve notices, identify your changes
+and their dates, and follow the applicable AGPL requirements.

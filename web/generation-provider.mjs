@@ -68,7 +68,9 @@ export function generationPrompt({ request, stage, count, avoidFronts = [], feed
     : `Return a JSON object with only a "cards" array. Each card must have only "front" and "back" string fields. Return exactly ${count} new cards. Do not repeat any avoid-list front.`;
   return { system, prompt: [
     ...(stage === 'cards' ? ['Here is your actual request now. Follow the examples\' pattern and return a good output for this request only.'] : []),
-    task, `Difficulty: ${request.difficulty}. ${difficulty[request.difficulty]}`,
+    task, request.difficulty
+      ? `Difficulty: ${request.difficulty}. ${difficulty[request.difficulty]}`
+      : 'No difficulty level is specified. Choose an appropriate level for the topic, source material, and user instructions.',
     `Topic (JSON string): ${JSON.stringify(request.topic)}`,
     ...(request.source ? [`Selected document excerpt (JSON): ${JSON.stringify(request.source)}`] : []),
     ...(stage === 'cards' ? [`Avoid fronts (JSON array): ${JSON.stringify(avoidFronts)}`] : []),

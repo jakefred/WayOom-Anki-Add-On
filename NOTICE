@@ -1,0 +1,26 @@
+WayOom - AI-generated flashcards for Anki
+Copyright (C) 2026 WayOom contributors
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+WayOom is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+WayOom is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public
+License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with WayOom in LICENSE. If not, see https://www.gnu.org/licenses/.
+
+This notice applies to original WayOom source code. It does not replace
+the licenses or copyright notices of third-party components.
+Bundled JavaScript notices are in THIRD_PARTY_NOTICES.txt. Bundled Python
+license files are retained in vendor/runtime/*/*.dist-info/ and their
+license subdirectories. Anki is supplied separately and retains its own
+license. WayOom is an independently developed add-on.
+
+Source: https://github.com/jakefred/WayOom-Anki-Add-On
+Build and source-distribution information: SOURCE_CODE.txt

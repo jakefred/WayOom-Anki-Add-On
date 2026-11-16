@@ -15,6 +15,9 @@ from scripts.build_credentials import runtime_files
 
 MODULES = ("__init__", "bridge", "cards", "catalog", "credentials", "jobs", "models",
            "operations", "proxy", "runtime", "settings", "settings_dialog", "storage", "validation")
+WEB_MODULES = ("bridge", "connection-test", "document-panel", "documents-pdf", "documents",
+               "failures", "form", "generation-provider", "generation", "ocr-worker", "panel", "sdk", "validation")
+RELEASE_DOCS = ("README.md", "LICENSE", "NOTICE", "SOURCE_CODE.txt")
 
 
 def text_bytes(path):
@@ -57,7 +60,7 @@ def js_notices(root):
 def package_files(root):
     # Never walk the checkout or vendor/runtime: they may contain local state,
     # stale dependencies, secrets, caches, or development files.
-    for name in ("__init__.py", "panel.html", "manifest.json", "README.md"):
+    for name in ("__init__.py", "panel.html", "manifest.json", *RELEASE_DOCS):
         yield name, text_bytes(root / name)
     for name in (*[f"{module}.py" for module in MODULES], "default_models.json", "provider_routes.json"):
         yield f"wayoom/{name}", text_bytes(root / "wayoom" / name)
@@ -82,6 +85,35 @@ def build_package(root, output):
     version = json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
     if manifest["human_version"] != version:
         raise ValueError("Manifest and package.json versions differ")
+    return write_archive(package_files(root), output)
+
+
+def source_files(root):
+    # Corresponding project source, without private notes, user state or caches.
+    for name in ("__init__.py", "panel.html", "manifest.json", *RELEASE_DOCS,
+                 "package.json", "package-lock.json", "requirements-credentials.txt",
+                 "scripts/build.mjs", "scripts/build_credentials.py", "scripts/package_addon.py",
+                 "scripts/vendor_credentials.py", "web/document-assets.json", "vendor/manifest.json",
+                 "vendor/licenses/Apache-2.0.txt", "vendor/licenses/tr46-MIT.txt"):
+        yield name, text_bytes(root / name)
+    for name in (*[f"{module}.py" for module in MODULES], "default_models.json", "provider_routes.json"):
+        yield f"wayoom/{name}", text_bytes(root / "wayoom" / name)
+    for module in WEB_MODULES:
+        yield f"web/{module}.mjs", text_bytes(root / "web" / f"{module}.mjs")
+    icon = "assets/WayOom Korean Brush Calligraphy App Icon.png"
+    yield icon, (root / icon).read_bytes()
+    for name, digest in sorted(json.loads((root / "vendor/manifest.json").read_text()).items()):
+        data = (root / "vendor/wheels" / name).read_bytes()
+        if sha256(data).hexdigest() != digest:
+            raise ValueError(f"Credential dependency checksum mismatch: {name}")
+        yield f"vendor/wheels/{name}", data
+
+
+def build_source_package(root, output):
+    return write_archive(source_files(root), output)
+
+
+def write_archive(files, output):
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     # A failed checksum/build cannot replace a previously successful artifact.
@@ -89,7 +121,7 @@ def build_package(root, output):
         candidate = Path(temporary) / "addon.zip"
         with ZipFile(candidate, "w", compression=ZIP_STORED) as archive:
             seen = set()
-            for name, content in sorted(package_files(root)):
+            for name, content in sorted(files):
                 if name in seen:
                     raise ValueError(f"Duplicate archive path: {name}")
                 seen.add(name)
@@ -112,7 +144,10 @@ def main():
     version = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["human_version"]
     output = args.output or ROOT / "dist" / f"wayoom-{version}.ankiaddon"
     digest = build_package(ROOT, output)
+    source_output = output.with_name(f"{output.stem}-source.zip")
+    source_digest = build_source_package(ROOT, source_output)
     print(f"{output}\nSHA-256: {digest}")
+    print(f"{source_output}\nSHA-256: {source_digest}")
 
 
 if __name__ == "__main__":

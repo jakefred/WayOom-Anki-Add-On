@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from zipfile import ZipFile
 
-from scripts.package_addon import ROOT, build_package
+from scripts.package_addon import ROOT, build_package, build_source_package
 from wayoom.credentials import CredentialService
 from wayoom.storage import ProfileStore
 
@@ -42,7 +42,7 @@ class PackagingTests(unittest.TestCase):
             self.assertIsNone(archive.testzip())
             names = archive.namelist()
             self.assertEqual(names, sorted(set(names)))
-            for required in ("__init__.py", "manifest.json", "panel.html", "README.md",
+            for required in ("__init__.py", "manifest.json", "panel.html", "README.md", "LICENSE", "NOTICE", "SOURCE_CODE.txt",
                              "wayoom/runtime.py", "wayoom/default_models.json",
                              "wayoom/provider_routes.json", "web/dist/panel.js",
                              "web/dist/documents-pdf.js", "web/dist/documents/pdf.worker.mjs",
@@ -73,6 +73,9 @@ class PackagingTests(unittest.TestCase):
             for name, entry in json.loads((ROOT / "web/document-assets.json").read_text()).items():
                 self.assertEqual(sha256(archive.read(f"web/dist/documents/{name}")).hexdigest(), entry["sha256"])
             self.assertIn(b"Remove all keys", archive.read("README.md"))
+            self.assertEqual(archive.read("LICENSE"), (ROOT / "LICENSE").read_bytes().replace(b"\r\n", b"\n"))
+            self.assertIn(b"AGPL-3.0-or-later", archive.read("NOTICE"))
+            self.assertIn(b"NO WARRANTY", archive.read("LICENSE"))
             notices = archive.read("THIRD_PARTY_NOTICES.txt").decode()
             self.assertIn("@ai-sdk/provider-utils 5.0.72", notices)
             self.assertIn("END OF TERMS AND CONDITIONS", notices)
@@ -87,12 +90,38 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(output.with_suffix(".ankiaddon.sha256").read_text(),
                          f"{digest}  {output.name}\n")
 
+    def test_source_release_has_editable_code_build_inputs_and_no_private_state(self):
+        output = self.base / "wayoom-source.zip"
+        digest = build_source_package(ROOT, output)
+        with ZipFile(output) as archive:
+            self.assertIsNone(archive.testzip())
+            names = archive.namelist()
+            self.assertEqual(names, sorted(set(names)))
+            for required in ("LICENSE", "NOTICE", "SOURCE_CODE.txt", "README.md", "__init__.py",
+                             "package.json", "package-lock.json", "panel.html", "scripts/build.mjs",
+                             "scripts/build_credentials.py", "scripts/package_addon.py",
+                             "requirements-credentials.txt", "web/document-assets.json", "vendor/manifest.json"):
+                self.assertIn(required, names)
+            for path in (ROOT / "web").glob("*.mjs"):
+                name = f"web/{path.name}"
+                self.assertIn(name, names)
+                self.assertEqual(archive.read(name), path.read_bytes().replace(b"\r\n", b"\n"))
+            for path in (ROOT / "vendor/wheels").glob("*.whl"):
+                self.assertEqual(archive.read(f"vendor/wheels/{path.name}"), path.read_bytes())
+            for name in names:
+                parts = set(PurePosixPath(name).parts)
+                self.assertFalse(parts & {"user_files", ".git", ".claude", "node_modules", "__pycache__", "dist"})
+                self.assertNotIn(name, {"CODEX.md", "CLAUDE.md", "TESTING.md", "MANUAL_VERIFICATION.md",
+                                        "IMPLEMENTATION_PLAN.md", "SOFTWARE_REQUIREMENTS_SPECIFICATION.md", "meta.json"})
+            self.assertEqual(json.loads(archive.read("package.json"))["license"], "AGPL-3.0-or-later")
+        self.assertEqual(build_source_package(ROOT, self.base / "repeated-source.zip"), digest)
+
     def test_dirty_checkout_and_crlf_do_not_enter_archive_and_bad_wheel_preserves_artifact(self):
         # A disposable source tree, with the same pinned dependencies. Never
         # inject sentinel secrets into the shared checkout.
         root = self.base / "dirty-source"
         root.mkdir()
-        for name in ("__init__.py", "panel.html", "manifest.json", "README.md", "package.json", "package-lock.json"):
+        for name in ("__init__.py", "panel.html", "manifest.json", "README.md", "LICENSE", "NOTICE", "SOURCE_CODE.txt", "package.json", "package-lock.json"):
             shutil.copyfile(ROOT / name, root / name)
         for name in ("wayoom", "web/dist", "vendor/wheels", "vendor/licenses", "assets"):
             shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))

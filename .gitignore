@@ -1,5 +1,22 @@
-# Local project specification
 /SOFTWARE_REQUIREMENTS_SPECIFICATION.md
+
+/CLAUDE.md
+/IMPLEMENTATION_PLAN.md
+/MANUAL_VERIFICATION.md
+/TESTING.md
+/vendor/README.md
+
+
+# Local editor and Anki installation state
+/.claude/
+/.codex/
+/.vscode/
+/.idea/
+/meta.json
+.DS_Store
+Thumbs.db
+*.pyc
+*.pyo
 
 # Local dependencies and test artifacts
 /node_modules/

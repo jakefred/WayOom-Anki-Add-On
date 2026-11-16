@@ -109,7 +109,7 @@ export class DocumentPanel {
     this.get('document-cancel').disabled = this.disabled;
     this.get('document-preview-area').hidden = !this.source;
     this.get('topic').required = !this.source;
-    this.get('topic-label').textContent = this.file ? 'Instructions (optional)' : 'Topic';
+    this.get('topic-label').textContent = this.file ? 'Instructions (optional)' : 'Instructions';
     this.get('topic-hint').textContent = this.file
       ? 'Add a focus, or leave blank to cover the main points.'
       : 'What would you like to learn? Up to 2,000 characters.';

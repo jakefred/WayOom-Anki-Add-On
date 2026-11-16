@@ -190,12 +190,15 @@ def main(argv=None):
                 evidence = json.loads(value)
                 assert evidence == {"engine": "function", "topic": "Typing survives", "focus": "topic",
                                     "invalid": "true", "inert": "<img src=x onerror=alert(1)>",
-                                    "settings": True}
+                                    "settings": True, "idleHidden": True, "difficultySwitch": True}
                 assert native_commands == ["wayoom:v1:settings"]
                 result["chromiumFormValidationFocusAndInertState"] = True
                 page.runJavaScript("""
 document.documentElement.classList.remove('night-mode');
-""", lambda _value: QTimer.singleShot(200, light_done))
+document.querySelector('#card-count').value = '10';
+document.querySelector('#card-count').dispatchEvent(new Event('input', {bubbles:true}));
+window.wayoomSetState(STATE);
+""".replace("STATE", json.dumps(state)), lambda _value: QTimer.singleShot(200, light_done))
             except Exception:
                 app.exit(1)
 
@@ -212,6 +215,11 @@ document.documentElement.classList.remove('night-mode');
 
         def dark_done():
             if args.output_dir: view.grab().save(str(args.output_dir / "panel-dark.png"))
+            page.runJavaScript("document.querySelector('#difficulty-toggle').click()",
+                               lambda _value: QTimer.singleShot(200, difficulty_done))
+
+        def difficulty_done():
+            if args.output_dir: view.grab().save(str(args.output_dir / "panel-difficulty-dark.png"))
             result["passed"] = True
             app.exit(0)
 
@@ -226,10 +234,27 @@ document.querySelector('#generation-form').requestSubmit();
 document.querySelector('#settings').click();
 topic.focus();
 for(let i=0;i<20;i++) window.wayoomSetState(STATE);
-window.wayoomSetState({...STATE,message:'<img src=x onerror=alert(1)>'});
+const idleHidden = document.querySelector('#generation-status').hidden
+  && document.querySelector('#message').textContent === ''
+  && document.querySelector('#state-label').textContent === '';
+const toggle = document.querySelector('#difficulty-toggle');
+const fields = document.querySelector('#difficulty-fields');
+const initiallyHidden = fields.hidden;
+toggle.click();
+const shown = !fields.hidden && toggle.getAttribute('aria-checked') === 'true';
+document.querySelector('#difficulty').value = 'advanced';
+window.wayoomSetState(STATE);
+toggle.click();
+const difficultySwitch = initiallyHidden && shown && fields.hidden
+  && document.querySelector('#difficulty').disabled
+  && document.querySelector('#difficulty').value === 'advanced';
+window.wayoomSetState({...STATE,state:'failed',message:'<img src=x onerror=alert(1)>'});
+// Toggling cleared errors; recheck invalid-input focus and inert status together.
+document.querySelector('#generation-form').requestSubmit();
+topic.focus();
 JSON.stringify({engine:typeof window.wayoomGeneration.run,topic:topic.value,
   focus:document.activeElement.id,invalid:document.querySelector('#card-count').getAttribute('aria-invalid'),
-  inert:document.querySelector('#message').textContent,settings:typeof pycmd === 'function'});
+  inert:document.querySelector('#message').textContent,settings:typeof pycmd === 'function',idleHidden,difficultySwitch});
 '''.replace("STATE", json.dumps(state))
             page.runJavaScript(script, checked)
 

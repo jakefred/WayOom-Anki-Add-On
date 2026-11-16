@@ -58,7 +58,9 @@ def question_key(value):
 
 
 def validate_request(value):
-    keys = ("requestId", "destination", "cardCount", "topic", "difficulty", "providerId")
+    keys = ("requestId", "destination", "cardCount", "topic", "providerId")
+    if type(value) is dict and "difficulty" in value:
+        keys += ("difficulty",)
     if type(value) is dict and "source" in value:
         keys += ("source",)
     _object(value, keys, "request")
@@ -84,7 +86,8 @@ def validate_request(value):
         destination = {"mode": "new", "name": name}
     else:
         raise ValidationError("Unsupported destination mode")
-    if type(value["difficulty"]) is not str or value["difficulty"] not in {"beginner", "intermediate", "advanced"}:
+    difficulty = value.get("difficulty")
+    if difficulty is not None and (type(difficulty) is not str or difficulty not in {"beginner", "intermediate", "advanced"}):
         raise ValidationError("Unsupported difficulty")
     if type(value["providerId"]) is not str or value["providerId"] not in PROVIDERS:
         raise ValidationError("Unsupported provider")
@@ -94,7 +97,7 @@ def validate_request(value):
         "cardCount": _integer(value["cardCount"], 1, 100, "cardCount"),
         "topic": topic,
         **({"source": source} if source is not None else {}),
-        "difficulty": value["difficulty"],
+        "difficulty": difficulty,
         "providerId": value["providerId"],
     }
 

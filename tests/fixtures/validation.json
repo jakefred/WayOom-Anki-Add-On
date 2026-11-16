@@ -10,6 +10,8 @@
   "result": {"deckName": null, "cards": [{"front": "What carries genetic information?", "back": "DNA"}]},
   "cases": [
     {"name": "valid Basic card", "valid": true, "edits": []},
+    {"name": "automatic difficulty omitted", "valid": true, "edits": [{"target": "request", "path": ["difficulty"], "delete": true}]},
+    {"name": "automatic difficulty null", "valid": true, "edits": [{"target": "request", "path": ["difficulty"], "value": null}]},
     {"name": "Unicode and multiline text", "valid": true, "edits": [{"target": "result", "path": ["cards", 0, "front"], "value": "  日本語 😀\n第二行  "}]},
     {"name": "HTML is plain text to escape during insertion", "valid": true, "edits": [{"target": "result", "path": ["cards", 0, "front"], "value": "<script>pycmd('delete')</script>"}]},
     {"name": "zero count", "valid": false, "edits": [{"target": "request", "path": ["cardCount"], "value": 0}]},

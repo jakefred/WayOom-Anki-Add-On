@@ -1,102 +1,144 @@
 # WayOom
 
-WayOom generates plain-text Basic flashcards with a provider key you supply.
-This is a **development build** with a generation form and native settings.
-Live providers, the full Anki UI workflow, and actual OS credential stores have not
-been verified. A limited offscreen Qt smoke passed; it does not certify those
-release gates. Do not treat this package as a production release.
+Turn a topic or document into Anki flashcards using your own AI provider.
 
-Requires Anki **26.9.3 or later** on desktop. That minimum is the tested backend
-target, not a claim that every later Anki version or platform has been verified.
-No Node.js, npm, terminal service, or dependency installation is needed by users.
+WayOom adds a sidebar to Anki for creating plain-text question-and-answer cards.
+Choose a deck, describe what you want to learn, and generate cards without copying
+answers between apps. You can also attach a document and focus on selected pages.
 
-The generator and Settings share a compact WayOom logo header. Generator options
-are grouped into deck/card settings, an optional document, and a topic or instructions.
-Expand **File formats and limits** for attachment details.
+## Features
 
-On first opening, choose **Set up now** or **Skip for now** below the logo header.
-In Settings, paste your API key. Recognizable key formats select the company;
-otherwise choose it yourself. Select **Verify key & load models**, choose a text
-model from the dropdown, then **Test selected model**. Testing uses a small amount
-of billable API tokens. **Done** and generation require a successful model test.
-Enter moves focus instead of closing setup. You can reopen Settings at any time.
-Connecting saves the key; closing discards only unsaved input. A replacement key
-or changed model must be verified again. Model token limits are shown when the
-provider supplies them; no prices or limits are guessed.
-After connecting, a persistent notice identifies the saved company's key and its
-storage location. **Use a different key** opens the replacement field; **Keep saved
-key** discards that unsaved replacement. Model-test progress and results appear in
-a large banner below the Settings header.
+- Generate 1–100 Basic cards into an existing or new deck.
+- Use OpenAI, Anthropic, Google Gemini, xAI, or Mistral with your own API key.
+- Attach a PDF, Word document, PowerPoint, or text file.
+- Select PDF pages or PowerPoint slides, with local English OCR for scanned PDFs.
+- Leave difficulty automatic, or choose Beginner, Intermediate, or Advanced.
+- Hide the sidebar from Anki's toolbar and continue reviewing.
+- View generated cards in Anki's Browser and undo additions with Anki Undo.
 
-WayOom opens on the left when first installed. Click the cream WayOom icon
-immediately after Sync in Anki's top toolbar to hide the sidebar; click it again
-to restore it. The Tools → WayOom menu item does the same thing. Visibility is
-remembered for each profile. Hiding preserves the form and any running generation
-and returns focus to Anki for reviewing.
+**Preview release:** AI output can contain mistakes. Review generated cards before
+studying them. Live-provider compatibility and full Windows, macOS, and Linux
+workflows have not yet been verified across all supported configurations.
 
-Choose an existing deck or Create new deck, enter a topic and 1–100 cards, select a
-difficulty, then Generate. Leave a new deck's name blank for AI naming.
-Cancel is available before addition begins; use Anki Undo after completion.
-Cancel shows immediate feedback, discards retained drafts, and ignores late
-generation results. It remains responsive while a failed request is being reported.
-After a generation failure, Retry with unchanged inputs reuses validated drafts.
-Changing any input discards those drafts. View cards opens the completed batch.
+## Install
 
-You can attach one **PDF, DOCX, PPTX, TXT, Markdown, CSV, or TSV** document instead
-of starting from a topic alone. For a PDF or PowerPoint, choose pages/slides such
-as `1-3, 7`, then select **Read selected content**. Leave the range blank for all;
-numbers follow the file order, starting at 1. Word and text/table files use the
-whole document. Export Word to PDF if you need exact page selection, and convert
-older `.doc`/`.ppt` files to `.docx`/`.pptx` or PDF first.
+Requires **Anki desktop 26.9.3 or later** and an API key from a supported provider.
+API usage is billed by the provider; a chat subscription may not include API credits.
+No separate OCR installation, Node.js, or terminal service is required.
 
-Check the selected-text preview, then optionally enter **Instructions** describing
-what to focus on. Leave instructions blank to cover the document's main points.
-PDF pages without selectable text use bundled **English OCR** automatically;
-select the OCR checkbox to recognize every selected page, including mixed scans.
-OCR can misread text, so check the preview. Word/PowerPoint extraction reads main
-document/slide text and tables; it does not read embedded images, speaker notes,
-or Word headers/footnotes. Image-only slides can be exported to PDF for OCR.
+1. Download the supplied `wayoom-0.1.7.ankiaddon` file.
+2. In Anki, choose **Tools → Add-ons → Install from file** and select it.
+3. Restart Anki, open WayOom, and choose **Set up now**.
+4. Paste your API key and choose the provider if it is not detected.
+5. Select **Verify key & load models**, choose a model, then **Test selected model**.
+6. Select **Done** after the test succeeds. Testing makes a small, billable request.
 
-Limits are 30 MB per file, 500 pages/slides per document, 50 selected pages/slides,
-and 60,000 extracted characters. Oversized selections are rejected, never silently
-truncated. File reading and OCR happen locally without an external OCR account or
-download. Generate sends the selected text, filename, page/slide selection and
-your instructions to the configured AI provider. The original file is not sent.
-Attachments stay in memory, survive hiding the sidebar, and clear when removed
-or the profile closes. Changing the attachment or its selection discards retained
-generation drafts. Larger selections use more provider input tokens; the selected
-model's context limit can still require a smaller selection.
+The minimum version is the tested Anki backend target; it does not guarantee
+compatibility with every later Anki release. WayOom is a desktop add-on, not an
+AnkiMobile or AnkiDroid extension.
 
-For a disposable test installation, use Anki's **Tools → Add-ons → Install from
-file**, select `wayoom-0.1.7.ankiaddon`, and restart Anki. The package identity is
-`wayoom`; use the same identity for upgrades. A source folder installed under a
-different name is a separate installation and will not share settings or keys.
+## Create cards
 
-Settings and recovery records are profile-scoped under the add-on's `user_files`.
-Anki preserves this directory during upgrades. Do not delete it when upgrading:
-it includes nonsecret credential references needed to find and remove saved keys.
-Session-only keys must be entered again after closing the profile.
+1. Choose a deck, or select **Create new deck**. Leave its name blank for AI naming.
+2. Enter the number of cards.
+3. Under **Instructions**, describe what you want to learn.
+4. Optionally enable **Set difficulty** and choose a level.
+5. Select **Generate**, then **View cards** to review the results.
 
-Provider usage may incur charges. Your topic, selected document text and filename, generated content, and fronts of
-WayOom cards in the selected deck may be processed by the selected provider.
-Use a dedicated key and set a low spending limit where the provider offers one.
-Windows/macOS use the OS credential store; Linux uses Secret Service. Bundled
-Linux native dependencies target x86-64, glibc 2.28+, CPython 3.12–3.14. When
-protected storage is unavailable, explicitly choose session-only storage.
+You can cancel before card insertion begins. After insertion, use **Anki Undo**
+to undo the addition. If generation fails, **Retry** with unchanged inputs can reuse
+validated drafts. Editing an input discards those drafts.
 
-Before uninstalling, open **WayOom Settings → Remove all keys — every profile**.
-Wait for successful removal before deleting the add-on. Uninstalling alone may
-leave keys in the OS credential store. If removal fails or the add-on was already
-deleted, revoke the dedicated key on the provider's key-management page:
+Click the cream WayOom button immediately after **Sync** in Anki's toolbar to hide
+or restore the sidebar. **Tools → WayOom** does the same. Visibility is remembered
+per profile; hiding preserves your inputs and any running generation.
+
+## Use a document
+
+Attach one **PDF, DOCX, PPTX, TXT, Markdown, CSV, or TSV** file.
+For a PDF or PowerPoint, enter a range such as `1-3, 7`, then select
+**Read selected content**. A blank range includes all pages or slides, within the
+limits below. Numbers follow file order, starting at 1, rather than printed labels.
+
+Check the text preview. Add optional **Instructions** to focus on particular ideas,
+or leave them blank to cover the document's main points. PDF pages without
+selectable text use local English OCR automatically. **Force English OCR** also
+recognizes pages with an existing text layer. Check scans carefully for errors.
+
+| Limit | Maximum |
+| --- | --- |
+| File size | 30 MB |
+| PDF pages or PowerPoint slides in the file | 500 |
+| Selected pages or slides per generation | 50 |
+| Extracted text | 60,000 characters |
+
+Word and text files use the whole document. Export Word to PDF to select pages;
+convert older `.doc` or `.ppt` files first. Word/PowerPoint extraction reads main
+text and tables, excluding embedded images, speaker notes, and Word headers or
+footnotes. Export image-only slides to PDF for OCR. Handwriting, equations, and
+complex layouts may not be recognized reliably.
+
+Larger excerpts use more input tokens and may exceed your selected model's context
+limit. Choose fewer pages if necessary. Expand **File formats and limits** in the
+generator for a reminder.
+
+## Privacy and API keys
+
+File reading and OCR run on your computer. When you select **Generate**, WayOom
+sends your instructions and selected document text, filename, and page/slide
+selection to your chosen AI provider. Generated content and fronts of WayOom cards
+in the selected deck may also be sent to help avoid duplicates. The original
+document and scanned page images are not uploaded by the document reader.
+
+Use a dedicated API key with a low spending limit. Keys use Windows Credential
+Manager, macOS Keychain, or Linux Secret Service, with an explicit session-only
+option when protected storage is unavailable. Bundled Linux protected storage
+targets x86-64, glibc 2.28+, and CPython 3.12–3.14; other Linux configurations can
+use session-only keys. Session-only keys must be entered again after closing the
+profile. Do not include API keys or private document text in bug reports.
+
+Settings and recovery records are stored per profile in the add-on's `user_files`
+directory. Original documents and extracted text are not saved to those records.
+Removing an attachment clears it from the form; a generation request may remain
+in memory until replaced or the profile closes. Hiding the sidebar keeps it open
+in memory.
+
+## Updates and removal
+
+Keep the same installation identity when upgrading, and preserve `user_files` so
+settings and saved-key references remain available. Source-folder installations
+under a different name are separate installations.
+
+Before uninstalling, open **Settings → Remove all keys — every profile** and wait
+for confirmation. Removing keys locally does not revoke them with the provider.
+If WayOom is already removed or key removal fails, revoke the dedicated key on
+your provider's website:
 [OpenAI](https://platform.openai.com/api-keys),
 [Anthropic](https://platform.claude.com/settings/keys),
 [Google](https://aistudio.google.com/apikey),
 [xAI](https://console.x.ai/), or
 [Mistral](https://console.mistral.ai/api-keys/).
-Removing a local key does not revoke it at the provider.
 
-Maintainers: see TESTING.md in the source repository for builds, coverage, and
-owner verification commands, and MANUAL_VERIFICATION.md for the remaining gates.
-Python dependency licenses are retained under
-`vendor/runtime/*/*.dist-info`; bundled JavaScript licenses are included in
-`THIRD_PARTY_NOTICES.txt`.
+## Help
+
+If a request fails, check your key, API credits, selected model, and connection in
+**Settings**. If document reading fails, try fewer pages, a clearer scan, or a new
+PDF export. WayOom currently generates plain-text Basic cards, not cloze cards or
+image-based cards.
+
+[Report a problem](https://github.com/jakefred/WayOom-Anki-Add-On/issues) with your
+Anki version, operating system, provider/model, and steps to reproduce it. Remove
+private information from screenshots and error details.
+
+## License and source
+
+Copyright (C) 2026 WayOom contributors. WayOom's original code is licensed under
+the **GNU AGPL version 3 or later**. You may use, modify, and redistribute it under
+those terms. It comes **without warranty**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Editable source and build instructions are provided with each release as
+`wayoom-VERSION-source.zip`; see [SOURCE_CODE.txt](SOURCE_CODE.txt). The source
+repository is [WayOom-Anki-Add-On](https://github.com/jakefred/WayOom-Anki-Add-On).
+
+Bundled dependency notices are included in the installed add-on as
+`THIRD_PARTY_NOTICES.txt` and Python distribution license files under `vendor/runtime`.

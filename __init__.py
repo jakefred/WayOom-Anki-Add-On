@@ -1,3 +1,5 @@
+# Copyright (C) 2026 WayOom contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from pathlib import Path
 import json
 from urllib.parse import quote
