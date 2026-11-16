@@ -58,7 +58,16 @@ def question_key(value):
 
 
 def validate_request(value):
-    _object(value, ("requestId", "destination", "cardCount", "topic", "difficulty", "providerId"), "request")
+    keys = ("requestId", "destination", "cardCount", "topic", "difficulty", "providerId")
+    if type(value) is dict and "source" in value:
+        keys += ("source",)
+    _object(value, keys, "request")
+    source = None
+    if "source" in value:
+        _object(value["source"], ("name", "selection", "text"), "document source")
+        source = {key: _text(value["source"][key], maximum, f"source {key}")
+                  for key, maximum in (("name", 255), ("selection", 256), ("text", 60000))}
+    topic = "" if source is not None and type(value["topic"]) is str and not value["topic"].strip() else _text(value["topic"], 2000, "topic")
     destination = value["destination"]
     if type(destination) is not dict:
         raise ValidationError("destination: expected an object")
@@ -83,7 +92,8 @@ def validate_request(value):
         "requestId": _text(value["requestId"], 128, "requestId"),
         "destination": destination,
         "cardCount": _integer(value["cardCount"], 1, 100, "cardCount"),
-        "topic": _text(value["topic"], 2000, "topic"),
+        "topic": topic,
+        **({"source": source} if source is not None else {}),
         "difficulty": value["difficulty"],
         "providerId": value["providerId"],
     }

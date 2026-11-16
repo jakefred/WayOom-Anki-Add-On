@@ -106,7 +106,7 @@ class SidebarTests(unittest.TestCase):
         self.assertEqual(self.webview.AnkiWebView.return_value.stdHtml.call_args.kwargs["js"],
                          [f"/_addons/{self.aqt.mw.addonManager.addonFromModule.return_value}/web/dist/panel.js"])
         self.aqt.mw.addonManager.setWebExports.assert_called_once_with(
-            self.addon.__name__, r"(?:web/dist/.*\.js|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
+            self.addon.__name__, r"(?:web/dist/.*\.(?:js|mjs|wasm|bcmap|pfb|ttf|gz)|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
         self.aqt.mw.addDockWidget.assert_called_once()
 
     def test_profile_close_cleans_up_and_next_profile_can_reopen(self):

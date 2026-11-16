@@ -1,7 +1,8 @@
 """Native guided setup. Secrets never enter the webview."""
+from pathlib import Path
 from aqt.qt import (QCheckBox, QComboBox, QDialog, QEvent,
                     QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, Qt,
-                    QVBoxLayout, QWidget)
+                    QVBoxLayout, QWidget, QPixmap)
 from .catalog import detect_provider, key_problem
 from .settings import PROVIDER_INFO
 from .validation import ValidationError
@@ -52,8 +53,7 @@ class SettingsDialog(QDialog):
         self.setStyleSheet(f"""
             QDialog#WayOomSettings {{ background: {bg}; color: {fg}; }}
             QLabel, QCheckBox {{ color: {fg}; background: transparent; }}
-            QLabel#WayOomTitle {{ font-size: 30px; font-weight: 700; }}
-            QLabel#WayOomSubtitle {{ color: {muted}; }}
+            QLabel#WayOomTitle {{ font-size: 20px; font-weight: 700; }}
             QScrollArea {{ border: 0; background: transparent; }}
             QWidget#SetupBody {{ background: {bg}; }}
             QLineEdit, QComboBox {{ color: {fg}; background: {field}; border: 1px solid {border}; border-radius: 5px; padding: 9px; min-height: 20px; }}
@@ -67,12 +67,23 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
-        title = self.label("WayOom")
+        header = QHBoxLayout()
+        header.setSpacing(14)
+        self.logo = QLabel()
+        self.logo.setAccessibleName("WayOom")
+        original = QPixmap(str(Path(__file__).resolve().parents[1] / "assets" / "WayOom Korean Brush Calligraphy App Icon.png"))
+        # Display crop only: retain the original PNG and its cream background.
+        if not original.isNull():
+            crop = original.copy(25, 265, 1200, 760)
+            self.logo.setPixmap(crop.scaled(88, 56, Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation))
+        self.logo.setFixedSize(88, 56)
+        header.addWidget(self.logo)
+        title = self.label("Settings")
         title.setObjectName("WayOomTitle")
-        layout.addWidget(title)
-        subtitle = self.label("Turn what you want to learn into flashcards.")
-        subtitle.setObjectName("WayOomSubtitle")
-        layout.addWidget(subtitle)
+        header.addWidget(title)
+        header.addStretch()
+        layout.addLayout(header)
         self.message = self.label("")
         self.message.setObjectName("SetupResult")
         self.message.setMinimumHeight(64)
@@ -84,9 +95,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.message)
         self.welcome = QWidget()
         welcome_layout = QVBoxLayout(self.welcome)
-        welcome_layout.addWidget(self.label("Connect an AI provider to get started. You’ll verify your API key, choose a model from a list, and test it before generating cards."))
-        welcome_layout.addWidget(self.label("You can skip this now and return through Settings at any time."))
-        welcome_layout.addWidget(self.label("You’ll need a provider API key. API usage is billed by your provider; an ordinary chat subscription may not include API credits."))
+        welcome_layout.addWidget(self.label("Connect your API key, choose a model, and test the connection."))
+        welcome_layout.addWidget(self.label("You can return to Settings at any time."))
+        welcome_layout.addWidget(self.label("API usage is billed separately by your provider. A chat subscription may not include API credits."))
         self.setup_now = self.button("Set up now", self.begin_setup, primary=True)
         welcome_layout.addWidget(self.setup_now)
         welcome_layout.addStretch()
@@ -102,7 +113,7 @@ class SettingsDialog(QDialog):
         self.key.setPlaceholderText("Paste your API key")
         self.provider = QComboBox()
         self.provider.setMinimumHeight(42)
-        self.provider.addItem("Detect from key, or choose company", None)
+        self.provider.addItem("Detect from key, or choose provider", None)
         for provider, (name, _url) in PROVIDER_INFO.items():
             self.provider.addItem(name, provider)
         form_layout.addWidget(self.label("1. API key"))
@@ -111,11 +122,11 @@ class SettingsDialog(QDialog):
         form_layout.addWidget(self.saved_key)
         self.replace_key_button = self.button("Use a different key", self.replace_key)
         form_layout.addWidget(self.replace_key_button)
-        form_layout.addWidget(self.label("Company"))
+        form_layout.addWidget(self.label("Provider"))
         form_layout.addWidget(self.provider)
         self.key_status = self.label("")
         form_layout.addWidget(self.key_status)
-        self.session = QCheckBox("Keep a new key for this session only")
+        self.session = QCheckBox("Save new key for this session only")
         form_layout.addWidget(self.session)
         self.connect_button = self.button("Verify key && load models", self.connect_provider, primary=True)
         form_layout.addWidget(self.connect_button)
@@ -123,11 +134,11 @@ class SettingsDialog(QDialog):
         self.model.setMinimumHeight(42)
         form_layout.addWidget(self.label("2. Model"))
         form_layout.addWidget(self.model)
-        self.model_info = self.label("Connect your key to see available text models.")
+        self.model_info = self.label("Connect a key to load models.")
         form_layout.addWidget(self.model_info)
         self.test_button = self.button("Test selected model", self.test_provider)
         form_layout.addWidget(self.test_button)
-        form_layout.addWidget(self.label("API usage is billed by tokens through your provider. Testing makes one small generation request."))
+        form_layout.addWidget(self.label("Testing sends one small, billable request."))
         self.manage_link = QLabel()
         self.manage_link.setOpenExternalLinks(True)
         form_layout.addWidget(self.manage_link)
@@ -137,7 +148,7 @@ class SettingsDialog(QDialog):
         body_layout.setContentsMargins(0, 0, 8, 0)
         body_layout.setSpacing(14)
         body_layout.addWidget(self.fields)
-        body_layout.addWidget(self.label("Your topic, generated content and generated fronts in the selected deck may be sent to this provider. Use a dedicated key with a low spending limit. Keys use OS protected storage unless you select session only."))
+        body_layout.addWidget(self.label("Your topic, selected document text and filename, generated content, and fronts of WayOom cards in this deck may be sent to the provider. Use a dedicated key with a spending limit. Keys use OS-protected storage unless session only is selected."))
         cleanup = QHBoxLayout()
         self.remove_button = self.button("Remove selected key", self.remove_provider)
         self.remove_all_button = self.button("Remove all keys — every profile", self.remove_all)
@@ -296,7 +307,7 @@ class SettingsDialog(QDialog):
         entering = not available or self._replacing or dirty
         name = PROVIDER_INFO.get(provider, ("Provider", ""))[0]
         storage = "this session" if saved.get("storage") == "session" else "protected storage"
-        self.saved_key.setText(f"{name} key saved in {storage}. You do not need to paste it again.")
+        self.saved_key.setText(f"{name} key saved in {storage}.")
         self.saved_key.setVisible(available)
         self.key.setVisible(entering)
         self.session.setVisible(entering)
@@ -329,7 +340,7 @@ class SettingsDialog(QDialog):
         limits = [f"{item[field]:,} {label} tokens" for field, label in (("inputTokens", "input/context"), ("outputTokens", "output")) if field in item]
         self.model_info.setText(("Verified and ready." if verified else "Select a model, then test it before finishing.")
                                + (" " + "; ".join(limits) + "." if limits else "") if model and not dirty
-                               else "Connect your key to see available text models.")
+                               else "Connect a key to load models.")
 
     def clear_keys(self):
         self.key.blockSignals(True)

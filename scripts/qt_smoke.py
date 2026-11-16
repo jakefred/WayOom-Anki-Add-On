@@ -80,6 +80,7 @@ def main(argv=None):
                                     load_models=fake_catalog, test_connection=fake_test)
             dialog.open()
             app.processEvents()
+            assert not dialog.logo.pixmap().isNull()
             if args.output_dir:
                 args.output_dir.mkdir(parents=True, exist_ok=True)
                 dialog.grab().save(str(args.output_dir / f"welcome-{'dark' if dark else 'light'}.png"))
@@ -178,7 +179,9 @@ def main(argv=None):
         page.scripts().insert(_create_bridge_script())
         bundle = (ROOT / "web/dist/panel.js").read_text(encoding="utf-8")
         # Match Anki stdHtml: scripts appear BEFORE the form markup.
-        html = "<!doctype html><html><body><script>" + bundle.replace("</script", "<\\/script") + "</script>" + (ROOT / "panel.html").read_text(encoding="utf-8") + "</body></html>"
+        logo = base / "logo.png"
+        logo.write_bytes((ROOT / "assets" / "WayOom Korean Brush Calligraphy App Icon.png").read_bytes())
+        html = "<!doctype html><html><body><script>" + bundle.replace("</script", "<\\/script") + "</script>" + (ROOT / "panel.html").read_text(encoding="utf-8").replace("__WAYOOM_LOGO_URL__", logo.as_uri()) + "</body></html>"
         source = base / "panel.html"
         source.write_text(html, encoding="utf-8")
 
@@ -197,6 +200,10 @@ document.documentElement.classList.remove('night-mode');
                 app.exit(1)
 
         def light_done():
+            def logo_checked(loaded):
+                assert loaded, "Generator logo must load"
+                result["generatorLogoLoaded"] = True
+            page.runJavaScript("(()=>{const i=document.querySelector('.logo img');return i.complete&&i.naturalWidth>0;})()", logo_checked)
             if args.output_dir:
                 args.output_dir.mkdir(parents=True, exist_ok=True)
                 view.grab().save(str(args.output_dir / "panel-light.png"))

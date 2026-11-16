@@ -21,7 +21,7 @@ menu_action = QAction("WayOom", mw)
 menu_action.setCheckable(True)
 menu_action.setEnabled(False)
 mw.form.menuTools.addAction(menu_action)
-mw.addonManager.setWebExports(__name__, r"(?:web/dist/.*\.js|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
+mw.addonManager.setWebExports(__name__, r"(?:web/dist/.*\.(?:js|mjs|wasm|bcmap|pfb|ttf|gz)|assets/WayOom Korean Brush Calligraphy App Icon\.png)")
 
 
 def toolbar_link(links, toolbar) -> None:
@@ -93,6 +93,7 @@ def add_sidebar() -> None:
         encoding="utf-8"
     )
     addon_id = mw.addonManager.addonFromModule(__name__)
+    html = html.replace("__WAYOOM_LOGO_URL__", quote(f"/_addons/{addon_id}/assets/WayOom Korean Brush Calligraphy App Icon.png", safe="/"))
     web.stdHtml(html, js=[f"/_addons/{addon_id}/web/dist/panel.js"])
 
     mw.addDockWidget(

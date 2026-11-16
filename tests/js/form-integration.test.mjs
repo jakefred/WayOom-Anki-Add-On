@@ -12,7 +12,7 @@ const until = async predicate => {
   assert.ok(predicate(), 'expected UI transition');
 };
 
-test('production form events → real engine/SDK/bridge → disposable Anki; double-click, naming, failure and retained Retry', { timeout: 30000 }, async t => {
+test('production form events → real engine/SDK/bridge → disposable Anki; double-click, naming, retained Retry and document source', { timeout: 30000 }, async t => {
   const python = process.env.WAYOOM_TEST_PYTHON ?? (existsSync('.venv/Scripts/python.exe') ? '.venv/Scripts/python.exe' : existsSync('.venv/bin/python') ? '.venv/bin/python' : 'python');
   const child = spawn(python, ['-u', 'tests/integration/bridge_peer.py', '--generation'], { stdio: ['pipe', 'pipe', 'pipe'] });
   let stderr = ''; child.stderr.on('data', data => { stderr += data; });
@@ -100,4 +100,19 @@ test('production form events → real engine/SDK/bridge → disposable Anki; dou
   assert.equal(elements['#state-label'].textContent, 'Canceled');
   assert.equal(messages.filter(message => message.op === 'commit').length, 3);
   assert.ok(!JSON.stringify(received).includes('fake-python-only-credential-123'));
+
+  // Real attachment extraction, optional guidance, request snapshots and the
+  // provider SDK all participate before real Anki inserts the resulting cards.
+  await client.rpc('fixture-engine-setup', { provider: 'openai' }); await sync();
+  const excerpt = 'Document-only fact: cell membranes regulate selective transport.';
+  await panel.documents.attach({ name: 'lecture.txt', size: excerpt.length,
+    async arrayBuffer() { return new TextEncoder().encode(excerpt).buffer; } });
+  enter('topic', 'Focus on selective transport.'); enter('card-count', '2');
+  await submit(); await sync(); stats = await client.rpc('fixture-engine-stats');
+  assert.equal(stats.count, 43);
+  assert.equal(stats.job.request.source.text, excerpt);
+  assert.equal(stats.job.request.topic, 'Focus on selective transport.');
+  const outgoing = messages.filter(message => message.op === 'fetch').at(-1);
+  assert.ok(JSON.stringify(outgoing).includes(excerpt));
+  assert.ok(JSON.stringify(outgoing).includes('Focus on selective transport.'));
 });

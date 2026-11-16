@@ -465,10 +465,68 @@ the actual production bundle and its engine, real OpenAI SDK adapter, actual Pyt
 bridge and a disposable real Anki collection. It inserts ten into an existing deck
 after a synchronous double submit, creates a one-card supplied-name deck, and proves
 a failed 30-card AI-named job adds nothing before Retry reuses 25 drafts and makes
-only one five-card call. It inserts 41 cards total, then cleans up. Cancel also
-blocks a delayed provider reply. DOM/Qt scheduling, provider replies and native
+only one five-card call. It also extracts an attached text document and adds two
+cards with both the selected source and user guidance passing through the real
+SDK and Python request snapshot. It inserts 43 cards total, then cleans up. Cancel
+also blocks a delayed provider reply. DOM/Qt scheduling, provider replies and native
 Browser dispatch are doubled; socket creation is blocked. Real backend rendering,
 rollback, Undo and Browser search construction are covered by their separate suites.
+
+## Document input and local OCR
+
+`web/documents.mjs` reads TXT/Markdown/CSV/TSV and bounded Office XML. DOCX uses
+main document paragraphs/tables; PPTX follows presentation relationships rather
+than ZIP filename order. PDF page numbers are physical file indices; PowerPoint
+uses slide numbers. Word has no reliable renderer-independent page boundaries,
+so exact page selection requires PDF export. Word headers/footnotes, embedded
+Office images, and slide speaker notes are not imported.
+
+PDF parsing/rendering uses PDF.js 6.5.438's compatibility build, loaded only when
+a PDF is attached. Its modern build failed a real Qt check because Anki's browser
+lacked `Map.getOrInsertComputed`; the compatibility build passed. Tesseract.js
+7.0.0's worker and the pinned English language data perform local OCR for PDF
+pages without text, or every selected page when forced. `web/ocr-worker.mjs`
+owns the worker from startup so cancellation can terminate language loading as
+well as recognition. Worker steps time out after 90 seconds. The pinned worker
+protocol is covered by real OCR smoke tests and must be rechecked on upgrades.
+
+`web/document-assets.json` pins SHA-256 values for the PDF worker, decoders,
+fonts, character maps, OCR core, and English data. Build copies only those assets;
+packaging reads and verifies the original dependency bytes rather than trusting
+stale files in `web/dist/documents`. No CDN or runtime language download is used.
+OCR caching is disabled. PDF, OCR, and Office readers do not execute document
+scripts/macros. Original files remain in the browser session; selected text enters
+the job's memory-only `source: {name, selection, text}` field. Python independently
+validates that optional field and clears it on profile close. Durable commit
+records exclude the source and instructions. Removing a file clears the form and
+its parsing workers; an existing job's memory-only snapshot remains until replaced
+or the profile closes, consistent with retry/replay validation. Both naming and card prompts treat
+source material as untrusted data and instruct the model to stay within it.
+
+The form gates Generate until the attachment has been read, shows an inert text
+preview, permits optional clarifying instructions, and invalidates retained drafts
+on file/range/OCR changes. Limits: 30 MiB/file, 500 pages/slides/document, 50 selected
+pages/slides, 60,000 source Unicode characters, 2,000 instruction characters.
+DOC/PPT legacy binaries and encrypted PDFs require conversion first. A model with
+a smaller context window may still reject a valid selection; content is never
+silently truncated to fit.
+
+Default tests cover range syntax, text decoding, bounded ZIP filtering, independent
+source validation, cancellation/stale results, request/privacy boundaries, and
+document-to-Anki generation with fake provider responses. To verify actual browser
+PDF/OCR behavior, use the optional separate Qt dependency environment:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/document_smoke.py --qt-path .test-tmp/qt-env --output-dir .test-tmp/document-evidence
+```
+
+This explicit smoke starts a loopback-only server, blocks external browser requests,
+generates disposable PDF/DOCX/PPTX/text/CSV fixtures, drives the actual panel bundle,
+and checks selected-page exclusion, real English OCR, Office table/slide order,
+inert previews and cancellation. It passed locally on Windows with zero external
+requests. It does not open Anki's main window, use a personal profile, or call a
+provider. Native file-picker interaction, real-world OCR quality, other OSes and
+live document-grounded card quality remain owner checks.
 
 ## Packaging and upgrade verification
 
@@ -686,6 +744,11 @@ never overwritten. Input is bounded and validated against the existing card cont
 concerns and the other release gates for the owner. No real cards have been rated yet.
 
 ### Optional offscreen Qt smoke
+
+The generator and native Settings now display the original cream logo with a display-only
+crop. The smoke checks that both logo images load, and captures both themes. The generator
+uses grouped fields, shorter hints, and expandable file limits; provider privacy and billing
+information remain visible. These checks cover isolated Qt views, not Anki's main window.
 
 This is a separate **Windows CPython 3.12 development target**, not an add-on
 runtime dependency or default-suite requirement. Its 38 resolved aqt/Qt dependencies

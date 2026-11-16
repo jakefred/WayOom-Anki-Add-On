@@ -10,7 +10,11 @@ Requires Anki **26.9.3 or later** on desktop. That minimum is the tested backend
 target, not a claim that every later Anki version or platform has been verified.
 No Node.js, npm, terminal service, or dependency installation is needed by users.
 
-On first opening, choose **Set up now** or **Skip for now** below the WayOom title.
+The generator and Settings share a compact WayOom logo header. Generator options
+are grouped into deck/card settings, an optional document, and a topic or instructions.
+Expand **File formats and limits** for attachment details.
+
+On first opening, choose **Set up now** or **Skip for now** below the logo header.
 In Settings, paste your API key. Recognizable key formats select the company;
 otherwise choose it yourself. Select **Verify key & load models**, choose a text
 model from the dropdown, then **Test selected model**. Testing uses a small amount
@@ -22,7 +26,7 @@ provider supplies them; no prices or limits are guessed.
 After connecting, a persistent notice identifies the saved company's key and its
 storage location. **Use a different key** opens the replacement field; **Keep saved
 key** discards that unsaved replacement. Model-test progress and results appear in
-a large banner below the WayOom title.
+a large banner below the Settings header.
 
 WayOom opens on the left when first installed. Click the cream WayOom icon
 immediately after Sync in Anki's top toolbar to hide the sidebar; click it again
@@ -38,6 +42,31 @@ generation results. It remains responsive while a failed request is being report
 After a generation failure, Retry with unchanged inputs reuses validated drafts.
 Changing any input discards those drafts. View cards opens the completed batch.
 
+You can attach one **PDF, DOCX, PPTX, TXT, Markdown, CSV, or TSV** document instead
+of starting from a topic alone. For a PDF or PowerPoint, choose pages/slides such
+as `1-3, 7`, then select **Read selected content**. Leave the range blank for all;
+numbers follow the file order, starting at 1. Word and text/table files use the
+whole document. Export Word to PDF if you need exact page selection, and convert
+older `.doc`/`.ppt` files to `.docx`/`.pptx` or PDF first.
+
+Check the selected-text preview, then optionally enter **Instructions** describing
+what to focus on. Leave instructions blank to cover the document's main points.
+PDF pages without selectable text use bundled **English OCR** automatically;
+select the OCR checkbox to recognize every selected page, including mixed scans.
+OCR can misread text, so check the preview. Word/PowerPoint extraction reads main
+document/slide text and tables; it does not read embedded images, speaker notes,
+or Word headers/footnotes. Image-only slides can be exported to PDF for OCR.
+
+Limits are 30 MB per file, 500 pages/slides per document, 50 selected pages/slides,
+and 60,000 extracted characters. Oversized selections are rejected, never silently
+truncated. File reading and OCR happen locally without an external OCR account or
+download. Generate sends the selected text, filename, page/slide selection and
+your instructions to the configured AI provider. The original file is not sent.
+Attachments stay in memory, survive hiding the sidebar, and clear when removed
+or the profile closes. Changing the attachment or its selection discards retained
+generation drafts. Larger selections use more provider input tokens; the selected
+model's context limit can still require a smaller selection.
+
 For a disposable test installation, use Anki's **Tools → Add-ons → Install from
 file**, select `wayoom-0.1.7.ankiaddon`, and restart Anki. The package identity is
 `wayoom`; use the same identity for upgrades. A source folder installed under a
@@ -48,7 +77,7 @@ Anki preserves this directory during upgrades. Do not delete it when upgrading:
 it includes nonsecret credential references needed to find and remove saved keys.
 Session-only keys must be entered again after closing the profile.
 
-Provider usage may incur charges. Your topic, generated content, and fronts of
+Provider usage may incur charges. Your topic, selected document text and filename, generated content, and fronts of
 WayOom cards in the selected deck may be processed by the selected provider.
 Use a dedicated key and set a low spending limit where the provider offers one.
 Windows/macOS use the OS credential store; Linux uses Secret Service. Bundled

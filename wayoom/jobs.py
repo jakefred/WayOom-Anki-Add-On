@@ -52,6 +52,7 @@ class JobCoordinator:
             if job:
                 job.aborts.clear()
                 job.generated_name = None
+                job.request.pop("source", None)
         self._abort(aborts)
 
     @staticmethod

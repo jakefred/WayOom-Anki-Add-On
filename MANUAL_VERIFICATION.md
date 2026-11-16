@@ -53,6 +53,15 @@ explicit live checks. Do not weaken browser security to get a pass.
   Generate exactly 10 and inspect real reviewable cards. Create supplied-name
   and blank-name decks, including a collision suffix. Try 1 and 100. Existing
   cards and scheduling must remain unchanged. **AC-05/06/07/08.**
+- [ ] Attach PDF, DOCX, PPTX, TXT and CSV files through Anki's file picker. Select
+  a PDF page range and PowerPoint slide range and verify excluded content is absent
+  from the preview. Test an English scanned PDF and forced OCR on mixed pages;
+  check recognition quality. Add clarifying instructions and generate cards, then
+  repeat with blank instructions. Inspect whether answers stay within the source.
+  Cancel reading, remove/replace a file, hide/reopen the sidebar, and switch
+  profiles during extraction. Check file/range/size errors and both UI themes.
+  Confirm the original file and source text are absent from saved job records.
+  **DOC-01–06.**
 - [ ] Double-click Generate; only one job/batch appears. Click the WayOom button
   after Sync to hide the panel during generation/review, then click it to reopen;
   the job continues and current state returns. Check the cream button's appearance

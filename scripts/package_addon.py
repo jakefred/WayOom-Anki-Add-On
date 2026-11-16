@@ -26,18 +26,25 @@ def js_notices(root):
     lock = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
     notices = []
     for name, entry in sorted(lock["packages"].items()):
-        if not name or entry.get("dev"):
+        # PDF.js's optional native canvas packages belong to Node, not the
+        # browser build shipped in Anki. They vary by build OS and never ship.
+        if not name or entry.get("dev") or entry.get("optional"):
             continue
         directory = root / name
         metadata = json.loads((directory / "package.json").read_text(encoding="utf-8"))
         if metadata["version"] != entry["version"]:
             raise ValueError("Installed JS dependencies differ from package-lock.json; run npm ci")
         licenses = sorted(path for path in directory.iterdir()
-                          if path.is_file() and path.name.lower().startswith(("license", "copying", "notice")))
+                          if path.is_file() and path.name.lower().startswith(("license", "licence", "copying", "notice")))
         # This pinned Vercel package omits LICENSE from its npm tarball. Retain
         # the same project's attribution, plus the full Apache text below.
         if name == "node_modules/@ai-sdk/provider-utils" and metadata.get("license") == "Apache-2.0":
             licenses = [root / "node_modules/ai/LICENSE"]
+        if name == "node_modules/@tesseract.js-data/eng":
+            notices.append("English traineddata from https://github.com/naptha/tessdata (Apache-2.0). Only the language data is shipped, not the npm wrapper.\n")
+            licenses = [root / "vendor/licenses/Apache-2.0.txt"]
+        if name == "node_modules/tr46" and entry["version"] == "0.0.3":
+            licenses = [root / "vendor/licenses/tr46-MIT.txt"]
         if not licenses:
             raise ValueError(f"Missing dependency license: {name}")
         notices.append(f"{metadata['name']} {entry['version']}\n")
@@ -55,6 +62,13 @@ def package_files(root):
     for name in (*[f"{module}.py" for module in MODULES], "default_models.json", "provider_routes.json"):
         yield f"wayoom/{name}", text_bytes(root / "wayoom" / name)
     yield "web/dist/panel.js", text_bytes(root / "web/dist/panel.js")
+    yield "web/dist/documents-pdf.js", text_bytes(root / "web/dist/documents-pdf.js")
+    assets = json.loads((root / "web/document-assets.json").read_text(encoding="utf-8"))
+    for name, entry in assets.items():
+        data = (root / entry["source"]).read_bytes()
+        if sha256(data).hexdigest() != entry["sha256"]:
+            raise ValueError(f"Document asset checksum mismatch: {name}")
+        yield f"web/dist/documents/{name}", data
     icon = "assets/WayOom Korean Brush Calligraphy App Icon.png"
     yield icon, (root / icon).read_bytes()
     yield "THIRD_PARTY_NOTICES.txt", js_notices(root)

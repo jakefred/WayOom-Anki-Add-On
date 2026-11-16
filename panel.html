@@ -1,58 +1,106 @@
 ﻿<style>
-  :root { color-scheme: light; --panel-bg: #fff; --panel-text: #202124; --field-bg: #fff; --error: #b3261e; }
+  :root { color-scheme: light; --panel-bg: #fff; --panel-text: #202124; --field-bg: #fff; --error: #b3261e; --muted: #5f6368; --line: #dadce0; }
   :root.night-mode, .nightMode {
-    color-scheme: dark; --panel-bg: #202124; --panel-text: #eee; --field-bg: #292a2d; --error: #ffb4ab;
+    color-scheme: dark; --panel-bg: #202124; --panel-text: #eee; --field-bg: #292a2d; --error: #ffb4ab; --muted: #bdc1c6; --line: #505358;
   }
-  body { font-family: sans-serif; margin: 0; padding: 20px; color: var(--panel-text); background: var(--panel-bg); }
+  body { font-family: sans-serif; margin: 0; padding: 20px; line-height: 1.45; color: var(--panel-text); background: var(--panel-bg); }
   .panel { max-width: 42rem; margin: auto; }
-  h1 { margin: 0; font-size: 1.5rem; }
+  h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
   .header, .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .header { justify-content: space-between; }
+  .header { justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo { display: block; width: 88px; height: 56px; overflow: hidden; position: relative; border-radius: 6px; background: #fcf7e9; flex: none; }
+  .logo img { position: absolute; width: 94px; height: 94px; max-width: none; left: -3px; top: -20px; }
+  .form-section { padding: 4px 0 18px; border-bottom: 1px solid var(--line); }
+  .form-row { display: flex; gap: 12px; align-items: flex-start; }
+  .form-row > div { flex: 1; min-width: 0; }
+  .deck-row select { flex: 1; min-width: 0; }
+  .deck-row button { flex: none; }
+  #provider { color: var(--muted); font-size: .85rem; margin: 12px 0; }
+  #generate { color: white; background: #305fa6; border: 1px solid #305fa6; }
+  #generate:disabled { opacity: .55; }
+  form > .actions { margin-top: 18px; }
+  p:empty { display: none; }
+  details { margin-top: 6px; }
+  summary { cursor: pointer; }
+  input[type="file"] { font-size: .85rem; }
+  #document-ocr-option { font-size: .85rem; font-weight: 400; }
+  #document-name { overflow-wrap: anywhere; font-size: .85rem; }
+  @media (max-width: 380px) { body { padding: 14px; } .brand { gap: 8px; } }
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   label { display: block; margin: 16px 0 6px; font-weight: 600; }
-  input, select, textarea { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; color: var(--panel-text); background: var(--field-bg); border: 1px solid #888; border-radius: 4px; }
+  input, select, textarea { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; color: var(--panel-text); background: var(--field-bg); border: 1px solid #888; border-radius: 6px; }
   select option { color: var(--panel-text); background: var(--field-bg); }
   textarea { resize: vertical; min-height: 6rem; }
-  button { padding: 8px 12px; font: inherit; cursor: pointer; }
-  .hint { font-size: .9rem; }
+  button { padding: 8px 12px; font: inherit; cursor: pointer; color: var(--panel-text); background: var(--field-bg); border: 1px solid var(--line); border-radius: 6px; }
+  button:hover:not(:disabled) { filter: brightness(.95); }
+  .hint { font-size: .82rem; color: var(--muted); margin: 6px 0 10px; }
   .error { color: var(--error); font-weight: 600; margin: 6px 0; }
   [aria-invalid="true"] { border-color: currentColor; outline: 1px solid currentColor; }
   [hidden] { display: none !important; }
   input:focus-visible, select:focus-visible, textarea:focus-visible,
-  button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+  button:focus-visible, summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
   button:disabled { cursor: default; }
 </style>
 
 <section class="panel">
-  <div class="header"><h1>WayOom</h1><button id="settings" type="button">Settings</button></div>
+  <div class="header"><div class="brand"><span class="logo"><img src="__WAYOOM_LOGO_URL__" alt="WayOom"></span><h1>Card generator</h1></div><button id="settings" type="button">Settings</button></div>
   <p id="provider"></p>
   <form id="generation-form" novalidate>
     <fieldset id="form-fields">
-      <legend class="hint">Generate Basic front/back cards</legend>
-      <label for="destination">Destination</label>
+      <div class="form-section">
+      <label for="destination">Deck</label>
+      <div class="actions deck-row">
       <select id="destination" aria-describedby="destination-error deck-status"><option value="">Choose a deck</option><option value="new">Create new deck</option></select>
+      <button id="refresh-decks" type="button" aria-label="Refresh decks" title="Refresh decks">Refresh</button></div>
       <p id="destination-error" class="error" role="alert"></p>
-      <button id="refresh-decks" type="button">Refresh decks</button>
       <p id="deck-status" class="hint" role="status"></p>
       <div id="new-deck-fields" hidden>
         <label for="deck-name">New deck name (optional)</label>
         <input id="deck-name" type="text" autocomplete="off" aria-describedby="deck-name-hint deck-name-error">
-        <p id="deck-name-hint" class="hint">Leave blank for AI naming. Create a top-level deck; existing names get a numeric suffix.</p>
+        <p id="deck-name-hint" class="hint">Leave blank for an AI-generated name.</p>
         <p id="deck-name-error" class="error" role="alert"></p>
       </div>
-      <label for="card-count">Number of cards</label>
+      <div class="form-row"><div><label for="card-count">Number of cards</label>
       <input id="card-count" type="number" min="1" max="100" step="1" value="10" required aria-describedby="card-count-error">
       <p id="card-count-error" class="error" role="alert"></p>
-      <label for="topic">Topic</label>
-      <textarea id="topic" rows="4" required aria-describedby="topic-hint topic-error"></textarea>
-      <p id="topic-hint" class="hint">Be specific about what to learn. Up to 2,000 characters.</p>
-      <p id="topic-error" class="error" role="alert"></p>
-      <label for="difficulty">Difficulty</label>
+</div><div>      <label for="difficulty">Difficulty</label>
       <select id="difficulty" aria-describedby="difficulty-hint difficulty-error">
         <option value="beginner">Beginner</option><option value="intermediate" selected>Intermediate</option><option value="advanced">Advanced</option>
       </select>
-      <p id="difficulty-hint" class="hint">Beginner: facts and definitions. Intermediate: relationships and application. Advanced: nuanced distinctions and multi-step reasoning, with concise answers.</p>
+      <p id="difficulty-hint" class="hint">Facts, applications, or deeper reasoning.</p>
       <p id="difficulty-error" class="error" role="alert"></p>
+</div></div></div>
+      <div class="form-section"><label for="document-file">Document (optional)</label>
+      <input id="document-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.csv,.tsv" aria-describedby="document-hint document-error">
+      <p id="document-hint" class="hint">PDF, Word, PowerPoint, or text. Read locally; selected text, filename, and instructions go to your AI provider when you generate.</p>
+      <details class="hint"><summary>File formats and limits</summary><p>PDF, DOCX, PPTX, TXT, MD, CSV, TSV. 30 MB maximum. Up to 50 selected pages/slides and 60,000 characters. Scanned PDF pages use English OCR automatically.</p></details>
+      <p id="document-name"></p>
+      <div id="document-selection" hidden>
+        <label id="document-pages-label" for="document-pages">Pages to include</label>
+        <input id="document-pages" type="text" placeholder="1-3, 7 (blank = all)" aria-describedby="document-pages-hint document-error">
+        <p id="document-pages-hint" class="hint">Use file page numbers, starting at 1, rather than printed labels.</p>
+      </div>
+      <p id="document-whole-hint" class="hint" hidden>Reads text and tables only; excludes images and speaker notes. Export Word to PDF to select pages.</p>
+      <label id="document-ocr-option" hidden><input id="document-ocr" type="checkbox" style="width:auto"> Force English OCR on selected pages</label>
+      <div class="actions">
+        <button id="document-read" type="button" hidden>Read selected content</button>
+        <button id="document-remove" type="button" hidden>Remove document</button>
+        <button id="document-cancel" type="button" hidden>Cancel reading</button>
+      </div>
+      <p id="document-status" role="status" class="hint"></p>
+      <p id="document-error" role="alert" class="error"></p>
+      <div id="document-preview-area" hidden>
+        <label for="document-preview">Selected text preview</label>
+        <textarea id="document-preview" rows="6" readonly></textarea>
+        <p class="hint">Check for missing text or OCR errors before generating.</p>
+      </div>
+      </div>
+      <div class="form-section"><label id="topic-label" for="topic">Topic</label>
+      <textarea id="topic" rows="4" required aria-describedby="topic-hint topic-error"></textarea>
+      <p id="topic-hint" class="hint">Be specific about what to learn. Up to 2,000 characters.</p>
+      <p id="topic-error" class="error" role="alert"></p>
+      </div>
     </fieldset>
     <div class="actions"><button id="generate" type="submit" disabled>Generate</button><button id="retry" type="button" hidden>Retry</button></div>
   </form>

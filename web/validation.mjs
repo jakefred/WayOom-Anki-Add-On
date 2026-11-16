@@ -35,9 +35,12 @@ export const requestSchema = z.strictObject({
     z.strictObject({ mode: z.literal('new'), name: newDeckName }),
   ]),
   cardCount: z.number().int().min(1).max(100),
-  topic: text(2000),
+  topic: z.string().transform(value => value.normalize('NFC').trim()).pipe(z.union([z.literal(''), text(2000)])),
+  source: z.strictObject({ name: text(255), selection: text(256), text: text(60000) }).optional(),
   difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
   providerId: z.enum(['openai', 'anthropic', 'google', 'xai', 'mistral']),
+}).superRefine((request, ctx) => {
+  if (!request.topic && !request.source) ctx.addIssue({ code: 'custom', path: ['topic'], message: 'Enter a topic or attach a document.' });
 });
 
 export const basicCardSchema = z.strictObject({

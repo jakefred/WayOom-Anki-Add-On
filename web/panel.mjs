@@ -9,6 +9,11 @@ import { BridgeClient } from './bridge.mjs';
 import { runConnectionTest } from './connection-test.mjs';
 import { GenerationEngine } from './generation.mjs';
 import { GenerationPanel } from './form.mjs';
+import { configureDocumentAssets } from './documents.mjs';
+
+if (typeof document !== 'undefined' && document.currentScript?.src) {
+  configureDocumentAssets(new URL('./', document.currentScript.src).href);
+}
 
 function mountPanel() {
   const client = new BridgeClient(command => pycmd(command), {

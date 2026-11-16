@@ -1,5 +1,6 @@
 import { requestSchema } from './validation.mjs';
 import { classifyFailure, failureMessages, failureDiagnostic } from './failures.mjs';
+import { DocumentPanel } from './document-panel.mjs';
 
 const busyStates = new Set(['generating', 'validating', 'adding', 'starting']);
 const stageNames = { starting: 'Starting', naming: 'Naming deck', cards: 'Generating cards',
@@ -9,7 +10,7 @@ const providerNames = { openai: 'OpenAI', anthropic: 'Anthropic', google: 'Googl
 // The form owns its DOM for the webview lifetime. State pushes update status and
 // enabled controls only; they never populate an input from a job snapshot.
 export class GenerationPanel {
-  constructor(document, client, engine, command) {
+  constructor(document, client, engine, command, { openDocument } = {}) {
     Object.assign(this, { document, client, engine, command });
     this.state = {};
     this.decks = [];
@@ -23,6 +24,9 @@ export class GenerationPanel {
     this.progress = null;
     this.errors = {};
     this.recoveryKey = '';
+    this.documents = new DocumentPanel(document, () => {
+      this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
+    }, openDocument);
     this.get('generation-form').addEventListener('submit', event => { event.preventDefault(); void this.submit(); });
     this.get('retry').addEventListener('click', () => { void this.submit(); });
     this.get('refresh-decks').addEventListener('click', () => { void this.refreshDecks(); });
@@ -68,6 +72,7 @@ export class GenerationPanel {
         : { mode: 'existing', deckId: Number(destination) },
       cardCount: count === '' ? NaN : Number(count), topic: this.get('topic').value,
       difficulty: this.get('difficulty').value, providerId: this.state.configuredProvider };
+    if (this.documents.source) input.source = this.documents.source;
     const result = requestSchema.safeParse(input);
     if (!result.success) {
       for (const issue of result.error.issues) {
@@ -107,6 +112,7 @@ export class GenerationPanel {
       this.loading = false;
       this.decks = [];
       this.get('generation-form').reset();
+      this.documents.clear('', false);
       this.clearErrors();
     } else if (this.state.configurationToken !== undefined && state.configurationToken !== this.state.configurationToken) {
       this.engine.discard();
@@ -123,6 +129,7 @@ export class GenerationPanel {
 
   close() {
     this.closed = true;
+    this.documents.clear('', false);
     this.refreshSequence++;
     this.terminal = this.progress = null;
     this.render();
@@ -199,7 +206,7 @@ export class GenerationPanel {
   }
 
   available() {
-    return !this.closed && !this.running && !this.uncertain && !this.loading && this.state.canGenerate === true
+    return this.documents.ready && !this.closed && !this.running && !this.uncertain && !this.loading && this.state.canGenerate === true
       && !busyStates.has(this.state.state) && !this.engine.active;
   }
 
@@ -234,6 +241,8 @@ export class GenerationPanel {
       : busy ? this.state.provider ?? this.state.configuredProvider : this.state.configuredProvider ?? this.state.provider);
     this.text('provider', provider ? `Provider: ${providerNames[provider] ?? provider}` : 'Provider: not configured');
     this.get('form-fields').disabled = busy || this.closed;
+    this.documents.disabled = busy || this.closed;
+    this.documents.render();
     this.get('new-deck-fields').hidden = this.get('destination').value !== 'new';
     this.get('generate').disabled = !this.available();
     this.get('settings').disabled = busy || this.closed;

@@ -45,6 +45,8 @@ class PackagingTests(unittest.TestCase):
             for required in ("__init__.py", "manifest.json", "panel.html", "README.md",
                              "wayoom/runtime.py", "wayoom/default_models.json",
                              "wayoom/provider_routes.json", "web/dist/panel.js",
+                             "web/dist/documents-pdf.js", "web/dist/documents/pdf.worker.mjs",
+                             "web/dist/documents/ocr/worker.min.js", "web/dist/documents/ocr/eng.traineddata.gz",
                              "assets/WayOom Korean Brush Calligraphy App Icon.png",
                              "vendor/runtime/common/keyring/__init__.py",
                              "vendor/runtime/common/win32ctypes/__init__.py",
@@ -68,6 +70,8 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(manifest["human_version"], "0.1.7")
             self.assertEqual(archive.read("assets/WayOom Korean Brush Calligraphy App Icon.png"),
                              (ROOT / "assets/WayOom Korean Brush Calligraphy App Icon.png").read_bytes())
+            for name, entry in json.loads((ROOT / "web/document-assets.json").read_text()).items():
+                self.assertEqual(sha256(archive.read(f"web/dist/documents/{name}")).hexdigest(), entry["sha256"])
             self.assertIn(b"Remove all keys", archive.read("README.md"))
             notices = archive.read("THIRD_PARTY_NOTICES.txt").decode()
             self.assertIn("@ai-sdk/provider-utils 5.0.72", notices)
@@ -93,16 +97,21 @@ class PackagingTests(unittest.TestCase):
         for name in ("wayoom", "web/dist", "vendor/wheels", "vendor/licenses", "assets"):
             shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copyfile(ROOT / "vendor/manifest.json", root / "vendor/manifest.json")
+        shutil.copyfile(ROOT / "web/document-assets.json", root / "web/document-assets.json")
+        for entry in json.loads((ROOT / "web/document-assets.json").read_text()).values():
+            destination = root / entry["source"]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / entry["source"], destination)
         lock = json.loads((ROOT / "package-lock.json").read_text())
         for name, entry in lock["packages"].items():
-            if not name or entry.get("dev"):
+            if not name or entry.get("dev") or entry.get("optional"):
                 continue
             destination = root / name
-            destination.mkdir(parents=True)
+            destination.mkdir(parents=True, exist_ok=True)
             for path in (ROOT / name).iterdir():
                 if path.is_file():
                     shutil.copyfile(path, destination / path.name)
-        for name in ("user_files/private.json", "vendor/runtime/common/stale.py", "tests/local.py", "scripts/dev.py", "wayoom/local_debug.py"):
+        for name in ("user_files/private.json", "vendor/runtime/common/stale.py", "tests/local.py", "scripts/dev.py", "wayoom/local_debug.py", "web/dist/documents/local.txt"):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fake-secret-must-not-ship")

@@ -63,10 +63,13 @@ class SettingsDialogTests(unittest.TestCase):
         self.controller = SettingsController(self.service, self.store)
         qt = ModuleType("aqt.qt")
         for name in ("QCheckBox", "QComboBox", "QDialog", "QFormLayout", "QHBoxLayout", "QLabel",
-                     "QLineEdit", "QPushButton", "QScrollArea", "QVBoxLayout", "QWidget"):
+                     "QPixmap", "QLineEdit", "QPushButton", "QScrollArea", "QVBoxLayout", "QWidget"):
             setattr(qt, name, Widget)
+        qt.QPixmap = Mock(return_value=Mock(isNull=lambda: False))
         qt.Qt = SimpleNamespace(TextFormat=SimpleNamespace(PlainText=0), Key=SimpleNamespace(Key_Return=1, Key_Enter=2),
-                                FocusPolicy=SimpleNamespace(ClickFocus=1))
+                                FocusPolicy=SimpleNamespace(ClickFocus=1),
+                                AspectRatioMode=SimpleNamespace(KeepAspectRatio=1),
+                                TransformationMode=SimpleNamespace(SmoothTransformation=1))
         qt.QEvent = SimpleNamespace(Type=SimpleNamespace(KeyPress=1))
         spec = importlib.util.spec_from_file_location("wayoom.settings_dialog", Path(__file__).resolve().parents[2] / "wayoom/settings_dialog.py")
         module = importlib.util.module_from_spec(spec)
