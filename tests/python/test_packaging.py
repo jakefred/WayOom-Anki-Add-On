@@ -45,13 +45,16 @@ class PackagingTests(unittest.TestCase):
             for required in ("__init__.py", "manifest.json", "panel.html", "README.md", "LICENSE", "NOTICE", "SOURCE_CODE.txt",
                              "wayoom/runtime.py", "wayoom/default_models.json",
                              "wayoom/provider_routes.json", "web/dist/panel.js",
-                             "web/dist/documents-pdf.js", "web/dist/documents/pdf.worker.mjs",
+                             "web/dist/documents-pdf.js", "web/dist/documents-images.js", "web/dist/documents/pdf.worker.mjs",
                              "web/dist/documents/ocr/worker.min.js", "web/dist/documents/ocr/eng.traineddata.gz",
                              "assets/WayOom Korean Brush Calligraphy App Icon.png",
                              "vendor/runtime/common/keyring/__init__.py",
                              "vendor/runtime/common/win32ctypes/__init__.py",
                              "vendor/runtime/common/secretstorage/__init__.py"):
                 self.assertIn(required, names)
+            for language in ("eng", "spa", "fra", "deu", "por", "ita", "rus", "jpn", "kor",
+                             "chi_sim", "chi_tra", "ara", "hin"):
+                self.assertIn(f"web/dist/documents/ocr/{language}.traineddata.gz", names)
             for abi in ("cp312", "cp313", "cp314"):
                 self.assertTrue(any(n.startswith(f"vendor/runtime/linux/{abi}/_cffi_backend") for n in names))
             self.assertTrue(any(n.endswith("_rust.abi3.so") for n in names))

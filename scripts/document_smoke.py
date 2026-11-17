@@ -46,7 +46,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qt-path", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--fixture-dir", type=Path, help="Optional manifest.json and multilingual OCR images")
     args = parser.parse_args()
+    extra_cases = []
+    if args.fixture_dir:
+        fixture_dir = args.fixture_dir.resolve()
+        extra_cases = json.loads((fixture_dir / "manifest.json").read_text(encoding="utf-8"))
+        if not isinstance(extra_cases, list):
+            raise ValueError("Fixture manifest must be a list")
+        languages = {"eng", "spa", "fra", "deu", "por", "ita", "rus", "jpn", "kor",
+                     "chi_sim", "chi_tra", "ara", "hin"}
+        seen_files = set()
+        for case in extra_cases:
+            name = case["file"]
+            if (Path(name).name != name or name in seen_files
+                    or Path(name).suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp")):
+                raise ValueError(f"Invalid fixture filename: {name}")
+            seen_files.add(name)
+            if case["language"] not in languages or not isinstance(case.get("alsoEnglish", False), bool):
+                raise ValueError(f"Invalid fixture language: {name}")
+            if (not isinstance(case["expected"], list) or not case["expected"]
+                    or any(not isinstance(text, str) or not text.strip() for text in case["expected"])):
+                raise ValueError(f"Fixture {name} needs expected text snippets")
     qt_path = args.qt_path.resolve()
     sys.path.insert(0, str(qt_path))
     handles = []
@@ -58,7 +79,7 @@ def main():
                 handles.append(os.add_dll_directory(str(path)))
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
-    from PyQt6.QtCore import QTimer, QUrl
+    from PyQt6.QtCore import QTimer, QUrl, QBuffer, QIODevice
     from PyQt6.QtGui import QFont, QFontDatabase, QImage, QPainter
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -76,6 +97,28 @@ def main():
     painter.drawText(40, 220, "Cell membranes regulate transport.")
     painter.end()
     pixels = scan.bits().asstring(scan.sizeInBytes())
+    def encode_image(image, format):
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        if not image.save(buffer, format, 95):
+            raise RuntimeError(f"Qt could not create the {format} image fixture")
+        return bytes(buffer.data())
+    transparent = QImage(800, 1000, QImage.Format.Format_ARGB32)
+    transparent.fill(0)
+    painter = QPainter(transparent)
+    painter.setFont(QFont("Segoe UI", 22))
+    painter.drawText(40, 150, "Mitochondria release energy for the cell.")
+    painter.drawText(40, 220, "Cell membranes regulate transport.")
+    painter.end()
+    png = encode_image(transparent, "PNG")
+    image_relationship_type = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+    image_doc = '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>Printed introduction.</w:t></w:r></w:p><w:p><w:drawing><a:blip r:embed="picture"/><a:blip r:embed="picture"/><a:blip r:link="external"/><a:blip r:embed="vector"/></w:drawing></w:p></w:body></w:document>'
+    word_images = {
+        'word/document.xml': image_doc,
+        'word/_rels/document.xml.rels': f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="picture" Target="media/scan.png" Type="{image_relationship_type}"/><Relationship Id="external" Target="https://example.invalid/private.png" TargetMode="External" Type="{image_relationship_type}"/><Relationship Id="vector" Target="media/vector.svg" Type="{image_relationship_type}"/></Relationships>',
+        'word/media/scan.png': png, 'word/media/vector.svg': b'<svg/>',
+        'word/media/unused.png': b'not a valid image; must never be decoded',
+    }
     fixtures = {
         "lecture.pdf": pdf([
             b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>",
@@ -100,7 +143,26 @@ def main():
         }),
         "lecture.txt": b"Cell biology <img src=x onerror=alert(1)> stays literal.",
         "lecture.csv": b'concept,definition\n"Cell, membrane",Transport',
+        "scan.png": png, "scan.jpg": encode_image(scan, "JPEG"), "scan.webp": encode_image(scan, "WEBP"),
+        "illustrated.docx": office(word_images),
+        "image-only.docx": office({**word_images, 'word/document.xml': image_doc.replace('Printed introduction.', '')}),
+        "mixed.pdf": pdf([
+            b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+            stream(b"BT /F1 18 Tf 40 760 Td (Printed introduction.) Tj ET q 576 0 0 680 18 36 cm /Im0 Do Q"),
+            stream(zlib.compress(pixels), b"/Type /XObject /Subtype /Image /Width 800 /Height 1000 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]),
     }
+    for case in extra_cases:
+        fixtures[case["file"]] = (fixture_dir / case["file"]).read_bytes()
+    with ZipFile(BytesIO(fixtures['lecture.pptx'])) as presentation:
+        slides = {name: presentation.read(name) for name in presentation.namelist()}
+    for number in (1, 2):
+        slides[f'ppt/slides/slide{number}.xml'] = f'<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><a:p><a:r><a:t>Slide {number} introduction.</a:t></a:r></a:p><a:blip r:embed="picture"/></p:sld>'
+        slides[f'ppt/slides/_rels/slide{number}.xml.rels'] = f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="picture" Target="../media/{"scan" if number == 2 else "unused"}.png" Type="{image_relationship_type}"/></Relationships>'
+    slides.update({'ppt/media/scan.png': png, 'ppt/media/unused.png': b'invalid image on unselected slide'})
+    fixtures['illustrated.pptx'] = office(slides)
     state = {"profileEpoch": 1, "profileReady": True, "configuredProvider": "openai", "canGenerate": True, "state": "ready"}
     bootstrap = """window.pycmd = command => { const prefix='wayoom:v1:rpc:'; if (!command.startsWith(prefix)) return; const m=JSON.parse(command.slice(prefix.length)); if (!['ready','destinations','discard-retained'].includes(m.op)) throw new Error('Unexpected provider/job RPC: '+m.op); const result=m.op==='ready' ? {state:STATE} : m.op==='destinations' ? {decks:[{deckId:1,name:'Cells'}]} : {}; queueMicrotask(()=>window.wayoomBridge.receive({v:1,id:m.id,ok:true,result})); };""".replace("STATE", json.dumps(state))
     html = ("<!doctype html><meta charset=utf-8><script>" + bootstrap + "</script>" +
@@ -158,9 +220,10 @@ def main():
         view = QWebEngineView()
         page = QWebEnginePage(profile, view)
         view.setPage(page)
-        view.resize(850, 1250)
+        view.resize(500, 1250)
         script = r"""
         (async () => {
+          const extraCases=EXTRA_CASES;
           const $=id=>document.getElementById(id), panel=window.wayoomPanel;
           const assert=(ok,message)=>{if(!ok)throw new Error(message)};
           const wait=async condition=>{const until=Date.now()+120000; while(!condition()){if(Date.now()>until)throw new Error('Document operation timed out'); await new Promise(r=>setTimeout(r,50));}};
@@ -178,14 +241,53 @@ def main():
           assert($('document-status').textContent.includes('English OCR'),'OCR status');
           await attach('lecture.docx'); assert(panel.documents.source.text.includes('Table fact'),'Word paragraphs and tables');
           await attach('lecture.pptx'); text=await read('1'); assert(text.includes('Selected slide')&&!text.includes('Excluded'),'Presentation order and slide selection');
+          await attach('mixed.pdf'); text=await read('1'); assert(text.includes('Printed introduction')&&!/mitochondria/i.test(text),'PDF image OCR is opt-in when a text layer exists');
+          $('document-ocr').checked=true; $('document-ocr').dispatchEvent(new Event('change'));
+          text=await read('1'); assert(/mitochondria/i.test(text)&&/transport/i.test(text),'Mixed PDF image OCR');
+          await attach('illustrated.docx'); assert(!/mitochondria/i.test(panel.documents.source.text),'Word image OCR is opt-in');
+          assert(!$('document-ocr-option').hidden&&!$('document-local-hint').hidden,'Image scan checkbox and local token disclaimer');
+          assert($('document-local-hint').textContent.includes('no API tokens'),'Local scanning disclaimer');
+          $('document-ocr').checked=true; $('document-ocr').dispatchEvent(new Event('change'));
+          assert(!panel.documents.source&&$('generate').disabled,'Changing OCR clears the previous source');
+          text=await read(''); assert(/mitochondria/i.test(text)&&text.includes('Printed introduction'),'Word text plus image OCR');
+          assert((text.match(/mitochondria/ig)||[]).length===1,'Repeated Word image is scanned/included once');
+          assert($('document-status').textContent.includes('2 unsupported'),'Linked/vector images reported without fetching');
+          await attach('image-only.docx'); assert(!panel.documents.source,'Image-only Word waits for opt-in');
+          $('document-ocr').checked=true; $('document-ocr').dispatchEvent(new Event('change'));
+          text=await read(''); assert(/mitochondria/i.test(text),'Image-only Word');
+          await attach('illustrated.pptx'); text=await read('1'); assert(text.includes('Slide 2')&&!/mitochondria/i.test(text),'Slide image OCR is opt-in');
+          $('document-ocr').checked=true; $('document-ocr').dispatchEvent(new Event('change'));
+          text=await read('1'); assert(/mitochondria/i.test(text)&&text.includes('Slide 2'),'Selected slide image OCR only');
+          for(const name of ['scan.png','scan.jpg','scan.webp']) {
+            await attach(name); assert(!panel.documents.source,'Image waits for language selection'); text=await read('');
+            assert(/mitochondria/i.test(text)&&/transport/i.test(text),'Real standalone image OCR: '+name+' '+text);
+            assert($('document-ocr-option').hidden&&!$('document-local-hint').hidden,'Standalone images use local OCR');
+          }
+          for(const fixture of extraCases) {
+            await attach(fixture.file);
+            $('document-language').value=fixture.language;
+            $('document-language').dispatchEvent(new Event('change'));
+            $('document-english').checked=!!fixture.alsoEnglish;
+            $('document-english').dispatchEvent(new Event('change'));
+            text=await read('');
+            const normalized=value=>value.normalize('NFC').replace(/\s+/gu,' ').trim();
+            for(const expected of fixture.expected) assert(normalized(text).includes(normalized(expected)),
+              `OCR fixture ${fixture.file} (${fixture.language}) missed ${expected}: ${text}`);
+          }
+          const imageBytes=await(await fetch('/fixtures/scan.png')).arrayBuffer();
+          const pendingImage=panel.documents.attach(new File([imageBytes],'scan.png'));
+          $('document-cancel').click(); await pendingImage;
+          assert(!panel.documents.file&&!panel.documents.source,'Cancel image import ignores late results');
           await attach('lecture.txt'); assert($('document-preview').value.includes('<img'),'Inert text preview');
+          assert($('document-ocr-option').hidden,'Text files have no embedded-image setting');
           await attach('lecture.csv'); assert(panel.documents.source.text.includes('"Cell, membrane",Transport'),'CSV structure');
           await attach('scan.pdf'); $('document-read').click(); $('document-cancel').click(); await new Promise(r=>setTimeout(r,300)); assert(!panel.documents.file&&!panel.documents.source,'Cancel clears source');
-          await attach('lecture.pdf'); text=await read('2'); $('topic').value='Focus on membrane transport.';
+          await attach('illustrated.docx'); $('document-ocr').checked=true; $('document-ocr').dispatchEvent(new Event('change'));
+          text=await read(''); $('topic').value='Focus on membrane transport.';
           await new Promise(r=>setTimeout(r,600));
-          window.__documentSmoke={passed:true,checks:['PDF page selection','range errors','real English OCR','forced OCR','DOCX tables','PPTX presentation order','TXT inert preview','CSV structure','cancel'],source:panel.documents.source.selection};
+          window.__documentSmoke={passed:true,checks:['PDF page selection','range errors','real English OCR','mixed PDF image OCR','DOCX images and tables','image-only DOCX','PPTX selected-image OCR','PNG transparency','JPEG OCR','WebP OCR','linked/unsupported images skipped','image cancellation','TXT inert preview','CSV structure','cancel'],source:panel.documents.source.selection};
         })().catch(error=>{window.__documentSmoke={passed:false,error:String(error)}});
-        """
+        """.replace("EXTRA_CASES", json.dumps(extra_cases, ensure_ascii=False))
         started = False
 
         def loaded(ok):

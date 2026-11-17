@@ -739,9 +739,57 @@
     "sha256": "f8ace1f892b2bd9dc1792ba7f097fa7588f84fed48321480e04de5390828221f",
     "source": "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf"
   },
+  "ocr/ara.traineddata.gz": {
+    "sha256": "f4746c44b02342dd5b3d4f0198000f47d7c49f1a229e63e0f436c0592dcd9639",
+    "source": "node_modules/@tesseract.js-data/ara/4.0.0_best_int/ara.traineddata.gz"
+  },
+  "ocr/chi_sim.traineddata.gz": {
+    "sha256": "b8a23f10c7de500891eb458a8adc9cc58ab7f242f08b7d149f5e9aea4ad5db7c",
+    "source": "node_modules/@tesseract.js-data/chi_sim/4.0.0_best_int/chi_sim.traineddata.gz"
+  },
+  "ocr/chi_tra.traineddata.gz": {
+    "sha256": "11fe2610dab05d8a880d02f193ce70203f4c4bbe061b987d5529a2c038a22743",
+    "source": "node_modules/@tesseract.js-data/chi_tra/4.0.0_best_int/chi_tra.traineddata.gz"
+  },
+  "ocr/deu.traineddata.gz": {
+    "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b",
+    "source": "node_modules/@tesseract.js-data/deu/4.0.0_best_int/deu.traineddata.gz"
+  },
   "ocr/eng.traineddata.gz": {
     "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91",
     "source": "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz"
+  },
+  "ocr/fra.traineddata.gz": {
+    "sha256": "d611139672b3752c7097e671e4a1d9209dfd37f2aeb081ef6487fba3351e9255",
+    "source": "node_modules/@tesseract.js-data/fra/4.0.0_best_int/fra.traineddata.gz"
+  },
+  "ocr/hin.traineddata.gz": {
+    "sha256": "f3b6a0d320df38d886178cdd727b90dbf9df3db053adb32bd9cf73f0463cda07",
+    "source": "node_modules/@tesseract.js-data/hin/4.0.0_best_int/hin.traineddata.gz"
+  },
+  "ocr/ita.traineddata.gz": {
+    "sha256": "f702fcfad297ce028ede3626d1467b67939f23ff23595f9badd54681cf25a4d3",
+    "source": "node_modules/@tesseract.js-data/ita/4.0.0_best_int/ita.traineddata.gz"
+  },
+  "ocr/jpn.traineddata.gz": {
+    "sha256": "2b63ebfbf1484de4a08ce53b29ef98a1c17658a93cbd38acb665d7d316d0be88",
+    "source": "node_modules/@tesseract.js-data/jpn/4.0.0_best_int/jpn.traineddata.gz"
+  },
+  "ocr/kor.traineddata.gz": {
+    "sha256": "78c21276ab14c9bb734d83be1055d9fe5469a4e7e977c51ad385be5737e61126",
+    "source": "node_modules/@tesseract.js-data/kor/4.0.0_best_int/kor.traineddata.gz"
+  },
+  "ocr/por.traineddata.gz": {
+    "sha256": "dacebc1386ddaaf8389f81094236cca0d690897cde693d48cbdaa881c86e2b4c",
+    "source": "node_modules/@tesseract.js-data/por/4.0.0_best_int/por.traineddata.gz"
+  },
+  "ocr/rus.traineddata.gz": {
+    "sha256": "f51f5edc992249ff9b70a227b22f242dfa47b2b1bbc7ae0ea74908640c101f6a",
+    "source": "node_modules/@tesseract.js-data/rus/4.0.0_best_int/rus.traineddata.gz"
+  },
+  "ocr/spa.traineddata.gz": {
+    "sha256": "40be52f97b5d4eb7460073dc1f94cd546b27150333c0bf854ed7e7132db6bceb",
+    "source": "node_modules/@tesseract.js-data/spa/4.0.0_best_int/spa.traineddata.gz"
   },
   "ocr/tesseract-core-lstm.wasm.js": {
     "sha256": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680",

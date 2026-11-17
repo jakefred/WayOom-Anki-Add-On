@@ -24,9 +24,12 @@ await build({
 });
 
 // Load the PDF/OCR code only when a PDF is attached. Every worker, font,
-// decoder and English language asset is pinned and served by the add-on.
+// decoder and language assets are pinned and served by the add-on.
 await build({ entryPoints: ['./web/documents-pdf.mjs'], outfile: 'web/dist/documents-pdf.js',
   tsconfigRaw: {}, bundle: true, platform: 'browser', target: 'chrome120', format: 'esm', legalComments: 'eof',
+  banner: { js: '/*! WayOom | Copyright (C) 2026 WayOom contributors | SPDX-License-Identifier: AGPL-3.0-or-later | See LICENSE and NOTICE. */' } });
+await build({ entryPoints: ['./web/documents-images.mjs'], outfile: 'web/dist/documents-images.js',
+  tsconfigRaw: {}, bundle: true, platform: 'browser', target: 'chrome100', format: 'esm', legalComments: 'eof',
   banner: { js: '/*! WayOom | Copyright (C) 2026 WayOom contributors | SPDX-License-Identifier: AGPL-3.0-or-later | See LICENSE and NOTICE. */' } });
 const documentAssets = JSON.parse(await readFile('web/document-assets.json', 'utf8'));
 for (const [name, { source, sha256 }] of Object.entries(documentAssets)) {

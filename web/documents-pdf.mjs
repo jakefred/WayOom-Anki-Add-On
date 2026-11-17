@@ -1,5 +1,6 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { EnglishOcr } from './ocr-worker.mjs';
+import { LocalOcr } from './ocr-worker.mjs';
+import { normalizeOcrLanguages, ocrLanguageLabel } from './ocr-languages.mjs';
 import { parsePageSelection, checkedSource, cleanDocumentText, checkCanceled } from './documents.mjs';
 
 export async function openPdf(bytes, { signal, asset }) {
@@ -29,8 +30,10 @@ export async function openPdf(bytes, { signal, asset }) {
     checkCanceled(signal);
     throw new Error(error.message?.startsWith('Choose') ? error.message : 'This PDF could not be opened. Use an unencrypted PDF and try exporting it again.');
   }
-  return { kind: 'pages', count: pdf.numPages, destroy,
-    async read(selection, { forceOcr = false, onProgress = () => {} } = {}) {
+  return { kind: 'pages', count: pdf.numPages, supportsImageOcr: true, destroy,
+    async read(selection, { forceOcr = false, ocrLanguages = ['eng'], onProgress = () => {} } = {}) {
+      const languages = normalizeOcrLanguages(ocrLanguages);
+      const languageKey = languages.join('+');
       const pages = parsePageSelection(selection, pdf.numPages);
       const content = [], ocrPages = [], emptyPages = [];
       for (const n of pages) {
@@ -45,10 +48,11 @@ export async function openPdf(bytes, { signal, asset }) {
           } catch { checkCanceled(signal); } // A broken text layer may still render for OCR.
         }
         if (forceOcr || !text.replace(/[\s\p{Cf}]/gu, '')) {
-          onProgress(`Recognizing English text on page ${n}…`);
+          onProgress(`Recognizing ${ocrLanguageLabel(languages)} text on page ${n}…`);
           if (worker?.closed) worker = null;
+          if (worker && worker.languageKey !== languageKey) { worker.close(); worker = null; }
           if (!worker) {
-            worker = new EnglishOcr(asset, signal);
+            worker = new LocalOcr(asset, signal, languages);
             await worker.initialize();
             checkCanceled(signal);
           }

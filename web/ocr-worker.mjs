@@ -1,19 +1,23 @@
+import { normalizeOcrLanguages } from './ocr-languages.mjs';
+
 // Tesseract.js 7's pinned worker protocol. Owning the Worker directly lets Cancel
 // terminate it even while WASM/language data is loading, before initialization.
-export class EnglishOcr {
-  constructor(asset, signal, WorkerClass = Worker) {
+export class LocalOcr {
+  constructor(asset, signal, languages = ['eng'], WorkerClass = Worker) {
+    this.languages = normalizeOcrLanguages(languages);
+    this.languageKey = this.languages.join('+');
     this.worker = new WorkerClass(asset('ocr/worker.min.js'));
     this.pending = new Map(); this.sequence = 0; this.closed = false;
     this.signal = signal;
     this.abort = () => this.close();
     signal?.addEventListener('abort', this.abort, { once: true });
-    this.worker.onerror = () => this.close(new Error('English OCR could not load. Reinstall the add-on and try again.'));
+    this.worker.onerror = () => this.close(new Error('OCR could not load. Reinstall the add-on and try again.'));
     this.worker.onmessage = ({ data }) => {
       const entry = this.pending.get(data.jobId);
       if (!entry || data.status === 'progress') return;
       clearTimeout(entry.timer); this.pending.delete(data.jobId);
       if (data.status === 'resolve') entry.resolve(data.data);
-      else entry.reject(new Error('English OCR could not read this page. Try a clearer scan or a text-based PDF.'));
+      else entry.reject(new Error('OCR could not read this content. Try a clearer image or scan.'));
     };
     this.asset = asset;
     if (signal?.aborted) this.close();
@@ -22,16 +26,16 @@ export class EnglishOcr {
     if (this.closed) return Promise.reject(new Error('Document reading canceled.'));
     return new Promise((resolve, reject) => {
       const jobId = `ocr-${++this.sequence}`;
-      const timer = setTimeout(() => this.close(new Error('English OCR timed out. Try fewer or clearer pages.')), 90000);
+      const timer = setTimeout(() => this.close(new Error('OCR timed out. Try fewer or clearer pages.')), 90000);
       this.pending.set(jobId, { resolve, reject, timer });
-      this.worker.postMessage({ workerId: 'wayoom-english', jobId, action, payload });
+      this.worker.postMessage({ workerId: 'wayoom-ocr', jobId, action, payload });
     });
   }
   async initialize() {
     try {
       await this.send('load', { options: { lstmOnly: true, corePath: this.asset('ocr/'), logging: false } });
-      await this.send('loadLanguage', { langs: 'eng', options: { langPath: this.asset('ocr/'), cacheMethod: 'none', gzip: true, lstmOnly: true } });
-      await this.send('initialize', { langs: 'eng', oem: 1, config: {} });
+      await this.send('loadLanguage', { langs: this.languages, options: { langPath: this.asset('ocr/'), cacheMethod: 'none', gzip: true, lstmOnly: true } });
+      await this.send('initialize', { langs: this.languages, oem: 1, config: {} });
     } catch (error) { this.close(error); throw error; }
   }
   async recognize(canvas) {

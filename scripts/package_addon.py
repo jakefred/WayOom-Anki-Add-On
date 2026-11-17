@@ -15,7 +15,7 @@ from scripts.build_credentials import runtime_files
 
 MODULES = ("__init__", "bridge", "cards", "catalog", "credentials", "jobs", "models",
            "operations", "proxy", "runtime", "settings", "settings_dialog", "storage", "validation")
-WEB_MODULES = ("bridge", "connection-test", "document-panel", "documents-pdf", "documents",
+WEB_MODULES = ("bridge", "connection-test", "document-panel", "documents-pdf", "documents-images", "documents", "ocr-languages",
                "failures", "form", "generation-provider", "generation", "ocr-worker", "panel", "sdk", "validation")
 RELEASE_DOCS = ("README.md", "LICENSE", "NOTICE", "SOURCE_CODE.txt")
 
@@ -43,8 +43,8 @@ def js_notices(root):
         # the same project's attribution, plus the full Apache text below.
         if name == "node_modules/@ai-sdk/provider-utils" and metadata.get("license") == "Apache-2.0":
             licenses = [root / "node_modules/ai/LICENSE"]
-        if name == "node_modules/@tesseract.js-data/eng":
-            notices.append("English traineddata from https://github.com/naptha/tessdata (Apache-2.0). Only the language data is shipped, not the npm wrapper.\n")
+        if name.startswith("node_modules/@tesseract.js-data/"):
+            notices.append(f"{metadata['name']} traineddata from https://github.com/naptha/tessdata (Apache-2.0). Only the language data is shipped, not the npm wrapper.\n")
             licenses = [root / "vendor/licenses/Apache-2.0.txt"]
         if name == "node_modules/tr46" and entry["version"] == "0.0.3":
             licenses = [root / "vendor/licenses/tr46-MIT.txt"]
@@ -66,6 +66,7 @@ def package_files(root):
         yield f"wayoom/{name}", text_bytes(root / "wayoom" / name)
     yield "web/dist/panel.js", text_bytes(root / "web/dist/panel.js")
     yield "web/dist/documents-pdf.js", text_bytes(root / "web/dist/documents-pdf.js")
+    yield "web/dist/documents-images.js", text_bytes(root / "web/dist/documents-images.js")
     assets = json.loads((root / "web/document-assets.json").read_text(encoding="utf-8"))
     for name, entry in assets.items():
         data = (root / entry["source"]).read_bytes()

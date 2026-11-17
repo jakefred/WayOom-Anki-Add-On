@@ -125,6 +125,7 @@ export class GenerationPanel {
       this.difficultyEnabled = false;
       this.automaticCount = false;
       this.documents.clear('', false);
+      this.documents.resetLanguage();
       this.clearErrors();
     } else if (this.state.configurationToken !== undefined && state.configurationToken !== this.state.configurationToken) {
       this.engine.discard();
@@ -142,6 +143,7 @@ export class GenerationPanel {
   close() {
     this.closed = true;
     this.documents.clear('', false);
+    this.documents.resetLanguage();
     this.refreshSequence++;
     this.terminal = this.progress = null;
     this.render();

@@ -11,8 +11,8 @@ answers between apps. You can also attach a document and focus on selected pages
 
 - Generate 1–100 Basic cards into an existing or new deck, with an optional AI-chosen count.
 - Use OpenAI, Anthropic, Google Gemini, xAI, or Mistral with your own API key.
-- Attach a PDF, Word document, PowerPoint, or text file.
-- Select PDF pages or PowerPoint slides, with local English OCR for scanned PDFs.
+- Attach a PDF, Word document, PowerPoint, text file, or PNG/JPEG/WebP image.
+- Select PDF pages or PowerPoint slides, with local OCR in 13 languages for scanned PDFs.
 - Leave difficulty automatic, or choose Beginner, Intermediate, or Advanced.
 - Hide the sidebar from Anki's toolbar and continue reviewing.
 - View generated cards in Anki's Browser and undo additions with Anki Undo.
@@ -63,28 +63,63 @@ per profile; hiding preserves your inputs and any running generation.
 
 ## Use a document
 
-Attach one **PDF, DOCX, PPTX, TXT, Markdown, CSV, or TSV** file.
+Attach one **PDF, DOCX, PPTX, TXT, Markdown, CSV, TSV, PNG, JPG/JPEG, or WebP** file.
 For a PDF or PowerPoint, enter a range such as `1-3, 7`, then select
 **Read selected content**. A blank range includes all pages or slides, within the
 limits below. Numbers follow file order, starting at 1, rather than printed labels.
 
 Check the text preview. Add optional **Instructions** to focus on particular ideas,
 or leave them blank to cover the document's main points. PDF pages without
-selectable text use local English OCR automatically. **Force English OCR** also
-recognizes pages with an existing text layer. Check scans carefully for errors.
+selectable text use local OCR automatically. For an image, choose the **OCR language**
+and select **Read selected content**. Check scans carefully for errors.
+
+The OCR language defaults to English. The other bundled choices are Spanish,
+French, German, Portuguese, Italian, Russian, Japanese, Korean, simplified and
+traditional Chinese, Arabic, and Hindi. Select **Also read English** for a document
+that mixes English with another language. This setting changes text recognition;
+use **Instructions** to request the language of the generated cards.
+
+After attaching a PDF, Word document, or PowerPoint, you can check
+**My document includes images I'd like scanned**, then select **Read selected content**.
+For PDFs this runs OCR on the complete selected pages, including images alongside
+selectable text. For Word it scans supported images in the main body; for PowerPoint
+it scans images directly embedded in the selected slides. Repeated image references
+are scanned once per read. Unsupported, missing, or externally linked images are
+reported; linked images are never downloaded.
+
+**Image scanning runs locally and uses no API tokens.** Generating flashcards from
+the resulting text still uses your AI provider's tokens. Images are never sent to
+the AI provider for visual interpretation: OCR extracts text only.
+
+For OCR regression checks, the optional `scripts/document_smoke.py --fixture-dir`
+argument accepts a directory containing `manifest.json` and PNG, JPEG, or WebP
+images. Each manifest entry has `file`, `language`, and an `expected` list of text
+snippets; set `alsoEnglish` to `true` for bilingual cases. For example:
+
+```json
+[{"file":"spanish.png","language":"spa","expected":["Buenos días"]}]
+```
+
+The smoke runner compares the recognized text after Unicode and whitespace
+normalization and reports the filename and language on failure.
 
 | Limit | Maximum |
 | --- | --- |
 | File size | 30 MB |
 | PDF pages or PowerPoint slides in the file | 500 |
 | Selected pages or slides per generation | 50 |
+| Embedded images scanned per read | 50 unique images |
+| Embedded image data | 16 MB per image; 48 MB total |
+| Image dimensions | 16 megapixels; 10,000 pixels per side |
 | Extracted text | 60,000 characters |
 
 Word and text files use the whole document. Export Word to PDF to select pages;
 convert older `.doc` or `.ppt` files first. Word/PowerPoint extraction reads main
-text and tables, excluding embedded images, speaker notes, and Word headers or
-footnotes. Export image-only slides to PDF for OCR. Handwriting, equations, and
-complex layouts may not be recognized reliably.
+text and tables, with optional OCR for embedded PNG, JPEG, and WebP images. Speaker
+notes, master-slide images, and Word headers/footnotes are excluded. Export to PDF
+to scan rendered content that isn't directly available, such as vector images.
+Animated WebP is not supported. Handwriting, equations, and complex layouts may
+not be recognized reliably. Charts, diagrams, and photos are not interpreted.
 
 Larger excerpts use more input tokens and may exceed your selected model's context
 limit. Choose fewer pages if necessary. Expand **File formats and limits** in the
@@ -96,7 +131,7 @@ File reading and OCR run on your computer. When you select **Generate**, WayOom
 sends your instructions and selected document text, filename, and page/slide
 selection to your chosen AI provider. Generated content and fronts of WayOom cards
 in the selected deck may also be sent to help avoid duplicates. The original
-document and scanned page images are not uploaded by the document reader.
+document, uploaded image, and scanned page images are not uploaded to an AI provider.
 
 Use a dedicated API key with a low spending limit. Keys use Windows Credential
 Manager, macOS Keychain, or Linux Secret Service, with an explicit session-only
