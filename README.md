@@ -1,4 +1,5 @@
-![WayOom icon](assets/WayOom%20Korean%20Brush%20Calligraphy%20App%20Icon.png)
+<img src="assets/WayOom%20Korean%20Brush%20Calligraphy%20App%20Icon.png" alt="WayOom icon" width="160">
+
 # WayOom
 
 Turn a topic or document into Anki flashcards using your own AI provider.
