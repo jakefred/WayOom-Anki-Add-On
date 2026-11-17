@@ -137,7 +137,7 @@ def main(argv=None):
         view = QWebEngineView()
         page = QWebEnginePage(profile, view)
         view.setPage(page)
-        view.resize(560, 1100)
+        view.resize(500, 1100)
         view.show()
         # Use Anki's actual asynchronous DocumentReady bridge, not an early pycmd stub.
         native_commands = []
@@ -190,7 +190,8 @@ def main(argv=None):
                 evidence = json.loads(value)
                 assert evidence == {"engine": "function", "topic": "Typing survives", "focus": "topic",
                                     "invalid": "true", "inert": "<img src=x onerror=alert(1)>",
-                                    "settings": True, "idleHidden": True, "difficultySwitch": True}
+                                    "settings": True, "idleHidden": True, "difficultySwitch": True, "automaticCount": True,
+                                    "switchAlignment": True}
                 assert native_commands == ["wayoom:v1:settings"]
                 result["chromiumFormValidationFocusAndInertState"] = True
                 page.runJavaScript("""
@@ -220,6 +221,11 @@ window.wayoomSetState(STATE);
 
         def difficulty_done():
             if args.output_dir: view.grab().save(str(args.output_dir / "panel-difficulty-dark.png"))
+            page.runJavaScript("document.querySelector('#count-auto').click()",
+                               lambda _value: QTimer.singleShot(200, automatic_done))
+
+        def automatic_done():
+            if args.output_dir: view.grab().save(str(args.output_dir / "panel-automatic-count-dark.png"))
             result["passed"] = True
             app.exit(0)
 
@@ -248,13 +254,26 @@ toggle.click();
 const difficultySwitch = initiallyHidden && shown && fields.hidden
   && document.querySelector('#difficulty').disabled
   && document.querySelector('#difficulty').value === 'advanced';
+const autoButton = document.querySelector('#count-auto');
+const countRect = autoButton.getBoundingClientRect();
+const difficultyRect = toggle.getBoundingClientRect();
+const switchAlignment = Math.abs(countRect.top - difficultyRect.top) < 1
+  && Math.abs(countRect.height - difficultyRect.height) < 1;
+autoButton.click();
+const automaticCount = document.querySelector('#card-count-fields').hidden
+  && document.querySelector('#card-count').disabled
+  && autoButton.getAttribute('aria-checked') === 'false'
+  && autoButton.getAttribute('role') === 'switch'
+  && window.wayoomPanel.validate().cardCount === null;
+window.wayoomSetState(STATE);
+autoButton.click();
 window.wayoomSetState({...STATE,state:'failed',message:'<img src=x onerror=alert(1)>'});
 // Toggling cleared errors; recheck invalid-input focus and inert status together.
 document.querySelector('#generation-form').requestSubmit();
 topic.focus();
 JSON.stringify({engine:typeof window.wayoomGeneration.run,topic:topic.value,
   focus:document.activeElement.id,invalid:document.querySelector('#card-count').getAttribute('aria-invalid'),
-  inert:document.querySelector('#message').textContent,settings:typeof pycmd === 'function',idleHidden,difficultySwitch});
+  inert:document.querySelector('#message').textContent,settings:typeof pycmd === 'function',idleHidden,difficultySwitch,automaticCount,switchAlignment});
 '''.replace("STATE", json.dumps(state))
             page.runJavaScript(script, checked)
 

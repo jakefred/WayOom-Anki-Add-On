@@ -115,4 +115,15 @@ test('production form events → real engine/SDK/bridge → disposable Anki; dou
   const outgoing = messages.filter(message => message.op === 'fetch').at(-1);
   assert.ok(JSON.stringify(outgoing).includes(excerpt));
   assert.ok(JSON.stringify(outgoing).includes('Focus on selective transport.'));
+
+  await client.rpc('fixture-engine-setup', { provider: 'openai' }); await sync();
+  const beforeAuto = (await client.rpc('fixture-engine-stats')).records.length;
+  elements['#count-auto'].click();
+  assert.equal(elements['#card-count-fields'].hidden, true);
+  await submit(); await sync(); stats = await client.rpc('fixture-engine-stats');
+  assert.equal(stats.count, 71);
+  assert.equal(stats.job.request.cardCount, 28);
+  assert.deepEqual(stats.records.slice(beforeAuto).map(call => [call.stage, call.count]),
+    [['planning', 0], ['cards', 25], ['cards', 3]]);
+  assert.match(elements['#message'].textContent, /Added 28 cards/);
 });

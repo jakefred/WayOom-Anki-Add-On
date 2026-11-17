@@ -58,7 +58,9 @@ def question_key(value):
 
 
 def validate_request(value):
-    keys = ("requestId", "destination", "cardCount", "topic", "providerId")
+    keys = ("requestId", "destination", "topic", "providerId")
+    if type(value) is dict and "cardCount" in value:
+        keys += ("cardCount",)
     if type(value) is dict and "difficulty" in value:
         keys += ("difficulty",)
     if type(value) is dict and "source" in value:
@@ -94,7 +96,7 @@ def validate_request(value):
     return {
         "requestId": _text(value["requestId"], 128, "requestId"),
         "destination": destination,
-        "cardCount": _integer(value["cardCount"], 1, 100, "cardCount"),
+        "cardCount": None if value.get("cardCount") is None else _integer(value["cardCount"], 1, 100, "cardCount"),
         "topic": topic,
         **({"source": source} if source is not None else {}),
         "difficulty": difficulty,
@@ -104,6 +106,8 @@ def validate_request(value):
 
 def validate_generation(request, value):
     request = validate_request(request)
+    if request["cardCount"] is None:
+        raise ValidationError("Choose a card count before validating generated cards")
     _object(value, ("deckName", "cards"), "result")
     needs_name = request["destination"]["mode"] == "new" and request["destination"]["name"] is None
     if needs_name:

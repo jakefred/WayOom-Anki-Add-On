@@ -6,6 +6,10 @@ import { classifyFailure, failureDiagnostic } from './failures.mjs';
 export const namingWireSchema = {
   type: 'object', properties: { deckName: { type: 'string' } }, required: ['deckName'], additionalProperties: false,
 };
+export const cardCountWireSchema = {
+  type: 'object', properties: { cardCount: { type: 'integer', minimum: 1, maximum: 100 } },
+  required: ['cardCount'], additionalProperties: false,
+};
 export const cardsWireSchema = {
   type: 'object', properties: { cards: { type: 'array', items: {
     type: 'object', properties: { front: { type: 'string' }, back: { type: 'string' } },
@@ -63,7 +67,9 @@ export function generationPrompt({ request, stage, count, avoidFronts = [], feed
       'Return the JSON object alone, without Markdown fences, an introduction, or commentary.',
     ] : []),
   ].join('\n');
-  const task = stage === 'naming'
+  const task = stage === 'planning'
+    ? 'Return only {"cardCount":N}, where N is an integer from 1 to 100. Choose the smallest useful number of focused, non-redundant flashcards that covers the requested learning goals. For a document, base the count only on the selected excerpt and focus instructions. For a broad topic, choose a manageable introductory set rather than attempting exhaustive coverage. Respect a requested count in the instructions when it is within 1–100. Do not generate cards or a deck title yet.'
+    : stage === 'naming'
     ? 'Return only {"deckName":"..."}: a concise, topic-relevant top-level title of at most 100 characters, with no control characters or hierarchy separators.'
     : `Return a JSON object with only a "cards" array. Each card must have only "front" and "back" string fields. Return exactly ${count} new cards. Do not repeat any avoid-list front.`;
   return { system, prompt: [
@@ -84,9 +90,9 @@ export function createStructuredCaller(client) {
       client.fetch({ owner: request.requestId, kind: 'job', stage, batch }));
     try {
       const result = await generateText({ model, maxRetries: 0, abortSignal: signal,
-        maxOutputTokens: stage === 'naming' ? 1024 : Math.min(32768, 1024 + count * 1200),
+        maxOutputTokens: stage === 'cards' ? Math.min(32768, 1024 + count * 1200) : 1024,
         ...generationPrompt({ request, stage, count, avoidFronts, feedback }),
-        output: Output.object({ schema: jsonSchema(stage === 'naming' ? namingWireSchema : cardsWireSchema) }),
+        output: Output.object({ schema: jsonSchema(stage === 'planning' ? cardCountWireSchema : stage === 'naming' ? namingWireSchema : cardsWireSchema) }),
       });
       if (result.finishReason === 'content-filter') throw new BridgeError('refusal');
       return result.output;

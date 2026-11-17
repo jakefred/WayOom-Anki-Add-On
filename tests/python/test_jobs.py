@@ -45,6 +45,71 @@ class JobTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.jobs.consume_call("a", rid, "anthropic", stage="naming")
 
+    def test_automatic_count_is_bounded_immutable_and_precedes_other_actions(self):
+        self.request["cardCount"] = None
+        rid = self.start()
+        self.assertEqual(self.jobs.snapshot("a")["stage"], "planning")
+        self.assertEqual(self.jobs.snapshot("a")["callLimit"], 15)
+        for action in (lambda: self.jobs.count_complete("a", rid, 28),
+                       lambda: self.jobs.consume_call("a", rid, "anthropic"),
+                       lambda: self.jobs.consume_call("a", rid, "anthropic", stage="naming"),
+                       lambda: self.jobs.begin_validation("a", rid),
+                       lambda: self.jobs.begin_write("a", rid, self.col, self.request),
+                       lambda: self.jobs.progress("a", rid, "cards", 0, 0)):
+            with self.assertRaises(ValidationError): action()
+        self.jobs.progress("a", rid, "planning", 0, 0)
+        self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        for count in (None, 0, 101, 1.5, True, "28"):
+            with self.assertRaises(ValidationError): self.jobs.count_complete("a", rid, count)
+        self.assertEqual(self.jobs.count_complete("a", rid, 28), 28)
+        self.assertEqual(self.jobs.snapshot("a")["request"]["cardCount"], 28)
+        self.assertEqual(self.jobs.snapshot("a")["callLimit"], 9)
+        with self.assertRaises(ValidationError): self.jobs.count_complete("a", rid, 10)
+        with self.assertRaises(ValidationError): self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        self.jobs.consume_call("a", rid, "anthropic", batch=1)
+        with self.assertRaises(ValidationError): self.jobs.consume_call("a", rid, "anthropic", batch=2)
+        self.jobs.begin_validation("a", rid)
+        with self.assertRaises(ValidationError): self.jobs.begin_write("a", rid, self.col, {**self.request, "cardCount": 27})
+        self.jobs.begin_write("a", rid, self.col, {**self.request, "cardCount": 28})
+
+    def test_automatic_count_retry_retains_decision_only_for_unchanged_failed_inputs(self):
+        request = {**self.request, "cardCount": None}
+        job = self.jobs.start("a", request, self.settings)
+        rid = job["request"]["requestId"]
+        self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        self.jobs.count_complete("a", rid, 28)
+        self.jobs.fail("a", rid)
+        retried = self.jobs.start("a", request, self.settings)
+        self.assertEqual(retried["request"]["cardCount"], 28)
+        self.assertEqual(retried["retryOf"], rid)
+        self.jobs.fail("a", retried["request"]["requestId"])
+        manual = self.jobs.start("a", {**request, "cardCount": 28}, self.settings)
+        self.assertIsNone(manual["retryOf"])
+        self.jobs.fail("a", manual["request"]["requestId"])
+        again = self.jobs.start("a", request, self.settings)
+        self.assertIsNone(again["request"]["cardCount"])
+        self.jobs.consume_call("a", again["request"]["requestId"], "anthropic", stage="planning")
+        self.jobs.cancel("a", again["request"]["requestId"])
+        with self.assertRaises(ValidationError): self.jobs.count_complete("a", again["request"]["requestId"], 28)
+
+    def test_planning_attempts_are_limited_and_manual_requests_cannot_plan(self):
+        rid = self.start()
+        with self.assertRaises(ValidationError): self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        self.jobs.fail("a", rid)
+        job = self.jobs.start("a", {**self.request, "cardCount": None}, self.settings)
+        rid = job["request"]["requestId"]
+        for _ in range(3): self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        with self.assertRaises(ValidationError): self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+
+    def test_planning_progress_and_completion_are_rejected_after_deadline(self):
+        job = self.jobs.start("a", {**self.request, "cardCount": None}, self.settings)
+        rid = job["request"]["requestId"]
+        self.jobs.consume_call("a", rid, "anthropic", stage="planning")
+        self.now = 601
+        with self.assertRaises(ValidationError): self.jobs.count_complete("a", rid, 28)
+        self.assertEqual(self.jobs.snapshot("a")["failureCategory"], "timeout")
+        with self.assertRaises(ValidationError): self.jobs.progress("a", rid, "planning", 0, 0)
+
     def test_snapshot_and_provider_are_bound(self):
         rid = self.start()
         self.settings["modelId"] = "changed"

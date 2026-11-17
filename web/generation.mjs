@@ -1,4 +1,4 @@
-import { requestSchema, basicCardSchema, deckNamingResultSchema, validateGeneration } from './validation.mjs';
+import { requestSchema, basicCardSchema, cardCountResultSchema, deckNamingResultSchema, validateGeneration } from './validation.mjs';
 import { BridgeError } from './bridge.mjs';
 import { classifyFailure, failureMessages, failureDiagnostic } from './failures.mjs';
 import { createStructuredCaller } from './generation-provider.mjs';
@@ -144,6 +144,31 @@ export class GenerationEngine {
     throw new GenerationError(category, 'naming', this.retainedCount, true, diagnostic);
   }
 
+  async _chooseCount(active, job) {
+    if (active.request.cardCount !== null) return;
+    let category = 'malformed', diagnostic = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this._progress(active, 'planning', 0);
+      try {
+        const output = await this._wait(this.call({ job, request: active.request, stage: 'planning', batch: 0,
+          feedback: attempt ? 'Return only a cardCount integer from 1 to 100.' : null,
+          signal: active.controller.signal }), active);
+        diagnostic = '';
+        const parsed = cardCountResultSchema.safeParse(output);
+        if (!parsed.success) { category = 'malformed'; continue; }
+        const accepted = await this._rpc('count-complete', { requestId: active.requestId, cardCount: parsed.data.cardCount }, active);
+        if (accepted.cardCount !== parsed.data.cardCount) throw new BridgeError('validation');
+        active.request = { ...active.request, cardCount: parsed.data.cardCount };
+        return;
+      } catch (error) {
+        this._ensure(active);
+        category = classifyFailure(error); diagnostic = failureDiagnostic(error);
+        if (terminal.has(category)) throw new GenerationError(category, 'planning', 0, false, diagnostic);
+      }
+    }
+    throw new GenerationError(category, 'planning', 0, true, diagnostic);
+  }
+
   async _batch(active, job, batch) {
     const target = Math.min(25, active.request.cardCount - batch * 25);
     let feedback = null;
@@ -218,8 +243,11 @@ export class GenerationEngine {
       this.clearTimer(timer);
       timer = this.setTimer(deadlineReached, Math.max(0, active.deadline - this.now()));
       const previous = this._retained;
-      active.cache = previous && job.retryOf === previous.requestId && job.sessionId === previous.sessionId
-        ? previous : { batches: Array.from({ length: Math.ceil(active.request.cardCount / 25) }, () => []), sessionId: job.sessionId };
+      const reusable = previous && job.retryOf === previous.requestId && job.sessionId === previous.sessionId;
+      if (!reusable) this._retained = null;
+      await this._chooseCount(active, job);
+      active.cache = reusable ? previous
+        : { batches: Array.from({ length: Math.ceil(active.request.cardCount / 25) }, () => []), sessionId: job.sessionId };
       active.cache.requestId = active.requestId;
       active.batches = active.cache.batches;
       active.attempts = active.batches.map(() => 0);

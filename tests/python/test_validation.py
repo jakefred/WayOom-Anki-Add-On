@@ -38,6 +38,12 @@ class ValidationTests(unittest.TestCase):
                 result = {"deckName": None, "cards": [{"front": f"Q{i}", "back": "A"} for i in range(count)]}
                 self.assertEqual(len(validate_generation(request, result)["cards"]), count)
 
+    def test_optional_count_normalizes_but_unresolved_generation_cannot_be_validated(self):
+        request = {k: v for k, v in FIXTURES["request"].items() if k != "cardCount"}
+        self.assertIsNone(validate_request(request)["cardCount"])
+        self.assertIsNone(validate_request({**request, "cardCount": None})["cardCount"])
+        with self.assertRaises(ValidationError): validate_generation(request, FIXTURES["result"])
+
     def test_field_limits_count_unicode_codepoints(self):
         for field, maximum in (("front", 500), ("back", 2000)):
             for char in ("x", "😀"):

@@ -21,10 +21,11 @@ function harness({ script, existing = [], options = {}, beforeCommit } = {}) {
       const canonical = JSON.stringify({ ...payload.request, requestId: null });
       const reusable = h.state === 'failed' && h.canRetain && canonical === h.canonical;
       const retryOf = reusable ? h.job.request.requestId : null;
+      const chosenCount = reusable ? h.job.request.cardCount : payload.request.cardCount;
       if (!reusable) h.retainedName = null;
       h.canonical = canonical; h.canRetain = true; h.state = 'generating';
       h.startToken = payload.startToken;
-      h.job = { request: { ...payload.request, requestId: `job-${++h.sequence}` }, settings: { modelId: 'fixture', credentialRef: 'opaque' },
+      h.job = { request: { ...payload.request, cardCount: chosenCount, requestId: `job-${++h.sequence}` }, settings: { modelId: 'fixture', credentialRef: 'opaque' },
         state: h.state, deckName: h.retainedName, sessionId: 'profile-session', remainingSeconds: 600, retryOf };
       return structuredClone(h.job);
     }
@@ -33,6 +34,7 @@ function harness({ script, existing = [], options = {}, beforeCommit } = {}) {
     if (op === 'fail') { h.state = 'failed'; return {}; }
     if (op === 'progress') { h.state = payload.stage === 'validating' ? 'validating' : 'generating'; return {}; }
     if (op === 'naming-complete') { h.retainedName = payload.deckName; return { deckName: payload.deckName }; }
+    if (op === 'count-complete') { h.job.request.cardCount = payload.cardCount; return { cardCount: payload.cardCount }; }
     if (op === 'duplicates') {
       const seen = new Set(h.existing.map(folded)); const conflicts = [];
       payload.fronts.forEach((front, index) => { const key = folded(front); if (seen.has(key)) conflicts.push(index); seen.add(key); });
@@ -53,7 +55,7 @@ function harness({ script, existing = [], options = {}, beforeCommit } = {}) {
     call: async args => {
       h.calls.push({ ...args, avoidFronts: args.avoidFronts && [...args.avoidFronts] });
       if (script) return script(args, h);
-      return args.stage === 'naming' ? { deckName: 'Biology::Cells' }
+      return args.stage === 'planning' ? { cardCount: 28 } : args.stage === 'naming' ? { deckName: 'Biology::Cells' }
         : { cards: Array.from({ length: args.count }, () => card(`Question ${++h.nextFront}`)) };
     }, ...options });
   return h;
@@ -67,6 +69,67 @@ for (const count of [1, 100]) test(`assemble exactly ${count} cards before one c
   assert.equal(h.commits.length, 1);
   assert.equal(h.commits[0].result.cards.length, count);
   assert.equal(h.engine.retainedCount, 0);
+});
+
+test('automatic count is decided before naming and commits exactly the chosen count in bounded batches', async () => {
+  const h = harness();
+  const result = await h.engine.run(form({ cardCount: null, destination: { mode: 'new', name: null } }));
+  assert.equal(result.outcome.count, 28);
+  assert.deepEqual(h.calls.map(call => call.stage), ['planning', 'naming', 'cards', 'cards']);
+  assert.deepEqual(h.calls.filter(call => call.stage === 'cards').map(call => call.count), [25, 3]);
+  assert.equal(h.messages.filter(m => m.op === 'count-complete').length, 1);
+});
+
+test('omitting the count also requests an automatic decision', async () => {
+  const h = harness();
+  const input = form(); delete input.cardCount;
+  await h.engine.run(input);
+  assert.equal(h.commits[0].result.cards.length, 28);
+  assert.equal(h.calls[0].stage, 'planning');
+  const prompt = generationPrompt({ request: form({ cardCount: null }), stage: 'planning' }).prompt;
+  assert.match(prompt, /smallest useful number/);
+  assert.match(prompt, /1 to 100/);
+  assert.doesNotMatch(prompt, /undefined|Return exactly/);
+});
+
+for (const invalid of [null, { cardCount: 0 }, { cardCount: 101 }, { cardCount: 1.5 },
+  { cardCount: true }, { cardCount: '20' }, { cardCount: 20, extra: true }]) {
+  test(`invalid automatic count ${JSON.stringify(invalid)} exhausts planning only, without a commit`, async () => {
+    const h = harness({ script: () => invalid });
+    await assert.rejects(h.engine.run(form({ cardCount: null })), e => e.stage === 'planning' && e.exhausted);
+    assert.deepEqual(h.calls.map(call => call.stage), ['planning', 'planning', 'planning']);
+    assert.equal(h.commits.length, 0);
+    assert.equal(h.messages.filter(m => m.op === 'count-complete').length, 0);
+  });
+}
+
+test('unchanged automatic retry keeps the selected count and accepted drafts', async () => {
+  let failing = true;
+  const h = harness({ script: (args, h) => {
+    if (args.stage === 'planning') return { cardCount: 28 };
+    if (args.batch === 1 && failing) throw new BridgeError('network');
+    return { cards: Array.from({ length: args.count }, () => card(`Auto ${++h.nextFront}`)) };
+  } });
+  await assert.rejects(h.engine.run(form({ cardCount: null })));
+  assert.equal(h.engine.retainedCount, 25);
+  failing = false;
+  const result = await h.engine.run(form({ cardCount: null }));
+  assert.equal(result.outcome.count, 28);
+  assert.equal(h.calls.filter(call => call.stage === 'planning').length, 1);
+  assert.equal(h.calls.at(-1).count, 3);
+});
+
+test('canceling card-count planning ignores a late decision', async () => {
+  const waiting = deferred();
+  const h = harness({ script: () => waiting.promise });
+  const pending = h.engine.run(form({ cardCount: null }));
+  await tickUntil(() => h.calls.length === 1);
+  const rejected = assert.rejects(pending, e => e.category === 'canceled');
+  h.engine.cancel(); await rejected;
+  waiting.resolve({ cardCount: 28 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.commits.length, 0);
+  assert.equal(h.messages.filter(m => m.op === 'count-complete').length, 0);
 });
 
 test('AI naming is a dedicated call before cards, repairs hierarchy, and supplied names skip it', async () => {

@@ -102,7 +102,7 @@ class Bridge:
                 self.runtime.coordinator.progress(self.profile, payload["requestId"], payload["stage"], payload["batch"], payload["acceptedCount"])
                 self.reply(rpc_id, {})
             elif op == "fail" and set(payload) == {"requestId", "category", "stage"}:
-                if payload["category"] not in CATEGORIES - {"success", "canceled"} or payload["stage"] not in {"naming", "cards", "validating", "starting"}:
+                if payload["category"] not in CATEGORIES - {"success", "canceled"} or payload["stage"] not in {"planning", "naming", "cards", "validating", "starting"}:
                     raise ProxyError("refused")
                 self.runtime.fail_generation(payload["requestId"], payload["category"], payload["stage"])
                 self.reply(rpc_id, {})
@@ -123,6 +123,9 @@ class Bridge:
             elif op == "test-result" and set(payload) == {"owner", "category"}:
                 self._test_result(payload["owner"], payload["category"])
                 self.reply(rpc_id, {})
+            elif op == "count-complete" and set(payload) == {"requestId", "cardCount"}:
+                count = self.runtime.coordinator.count_complete(self.profile, payload["requestId"], payload["cardCount"])
+                self.reply(rpc_id, {"cardCount": count})
             elif op == "naming-complete" and set(payload) == {"requestId", "deckName"}:
                 name = self.runtime.coordinator.naming_complete(self.profile, payload["requestId"], payload["deckName"])
                 self.reply(rpc_id, {"deckName": name})

@@ -26,6 +26,7 @@ class _Job:
     stage: str = "cards"
     batch: int = 0
     accepted_count: int = 0
+    automatic_count: bool = False
 
 
 class JobCoordinator:
@@ -84,18 +85,24 @@ class JobCoordinator:
                 raise ValidationError("A job is already running in this profile")
             session = self._sessions[profile][0]
             needs_name = request["destination"] == {"mode": "new", "name": None}
+            automatic_count = request["cardCount"] is None
             retained_name = None
             reusable = (prior and prior.state == "failed" and prior.session == session and prior.retain_name
-                    and {k: v for k, v in prior.request.items() if k != "requestId"}
+                    and {k: (None if k == "cardCount" and prior.automatic_count else v)
+                         for k, v in prior.request.items() if k != "requestId"}
                     == {k: v for k, v in request.items() if k != "requestId"}
                     and prior.settings == settings)
             if reusable:
                 retained_name = prior.generated_name
+                if automatic_count:
+                    request["cardCount"] = prior.request["cardCount"]
             self._jobs[profile] = _Job(request, deepcopy(settings), session,
                                       self._clock() + 600, name_ready=not needs_name or retained_name is not None,
                                       generated_name=retained_name,
                                       retry_of=prior.request["requestId"] if reusable else None,
-                                      stage="naming" if needs_name and retained_name is None else "cards")
+                                      stage="planning" if request["cardCount"] is None else
+                                            "naming" if needs_name and retained_name is None else "cards",
+                                      automatic_count=automatic_count)
             return self.snapshot(profile)
 
     def _require(self, profile, request_id, states):
@@ -124,7 +131,9 @@ class JobCoordinator:
                 self._abort(job.aborts)
                 job.aborts.clear()
             count = job.request["cardCount"]
-            limit = 3 * ((count + 24) // 25)
+            limit = 3 * ((count + 24) // 25 if count is not None else 4)
+            if job.automatic_count:
+                limit += 3
             if job.request["destination"] == {"mode": "new", "name": None}:
                 limit += 3
             return deepcopy({"request": job.request, "settings": job.settings,
@@ -151,7 +160,12 @@ class JobCoordinator:
             job = self._require(profile, request_id, {"generating", "validating"})
             if provider_id != job.request["providerId"]:
                 raise ValidationError("Provider does not match this job")
-            if stage == "naming":
+            if stage == "planning":
+                if not job.automatic_count or job.request["cardCount"] is not None or type(batch) is not int or batch != 0:
+                    raise ValidationError("Card-count planning is not required or already finished")
+            elif job.request["cardCount"] is None:
+                raise ValidationError("Card-count planning is unfinished")
+            elif stage == "naming":
                 if job.name_ready or type(batch) is not int or batch != 0:
                     raise ValidationError("Naming is not required or already finished")
             elif stage == "cards":
@@ -166,6 +180,18 @@ class JobCoordinator:
             job.state = "generating"
             job.stage, job.batch = stage, batch
             return deepcopy(job.settings)
+
+    def count_complete(self, profile, request_id, count):
+        with self._lock:
+            job = self._require(profile, request_id, {"generating"})
+            if (not job.automatic_count or job.request["cardCount"] is not None
+                    or not job.calls.get(("planning", 0))):
+                raise ValidationError("Card-count planning is already finished or no attempt was made")
+            if type(count) is not int or not 1 <= count <= 100:
+                raise ValidationError("Expected a card count from 1 to 100")
+            job.request["cardCount"] = count
+            job.stage = "cards" if job.name_ready else "naming"
+            return count
 
     def naming_complete(self, profile, request_id, name):
         with self._lock:
@@ -202,7 +228,7 @@ class JobCoordinator:
             job = self._require(profile, request_id, {"generating", "validating"})
             if self._sessions[profile][1] is not collection or job.request != validate_request(request):
                 raise ValidationError("Profile or request changed before insertion")
-            if not job.name_ready:
+            if job.request["cardCount"] is None or not job.name_ready:
                 raise ValidationError("Naming is unfinished")
             if job.generated_name is not None and (result is None or result["deckName"] != job.generated_name):
                 raise ValidationError("Generated deck name changed before insertion")
@@ -211,6 +237,8 @@ class JobCoordinator:
     def begin_validation(self, profile, request_id):
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
+            if job.request["cardCount"] is None:
+                raise ValidationError("Card-count planning is unfinished")
             job.state = "validating"
 
     def finish(self, profile, request_id, *, success):
@@ -231,9 +259,11 @@ class JobCoordinator:
     def progress(self, profile, request_id, stage, batch, accepted_count):
         with self._lock:
             job = self._require(profile, request_id, {"generating", "validating"})
-            if (stage not in {"naming", "cards", "validating"} or type(batch) is not int
-                    or not 0 <= batch < (job.request["cardCount"] + 24) // 25
-                    or type(accepted_count) is not int or not 0 <= accepted_count <= job.request["cardCount"]):
+            count = job.request["cardCount"]
+            if (type(batch) is not int or type(accepted_count) is not int
+                    or (count is None and (stage != "planning" or batch != 0 or accepted_count != 0))
+                    or (count is not None and (stage not in {"naming", "cards", "validating"}
+                        or not 0 <= batch < (count + 24) // 25 or not 0 <= accepted_count <= count))):
                 raise ValidationError("Invalid progress")
             job.stage, job.batch, job.accepted_count = stage, batch, accepted_count
             job.state = "validating" if stage == "validating" else "generating"

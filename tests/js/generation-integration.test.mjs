@@ -50,6 +50,15 @@ test('bundled generation engine → five real adapters → Python authority → 
     assert.equal(calls[0].stage, 'naming');
     assert.deepEqual(calls.slice(1).map(call => call.count), [25, 25, 25, 25]);
     assert.equal(defaults[provider].liveStatus, 'untested');
+    const auto = await client.rpc('fixture-engine-setup', { provider, cardCount: null, destination: { mode: 'existing' } });
+    assert.equal((await engine.run(auto.request)).outcome.count, 28, provider);
+    total += 28;
+    const automatic = await client.rpc('fixture-engine-stats');
+    assert.equal(automatic.count, total);
+    assert.equal(automatic.job.request.cardCount, 28);
+    assert.equal(automatic.job.callsUsed, 3);
+    assert.deepEqual(automatic.records.slice(auto.records).map(call => [call.stage, call.count]),
+      [['planning', 0], ['cards', 25], ['cards', 3]], provider);
   }
   const single = await client.rpc('fixture-engine-setup', { provider: 'openai', cardCount: 1,
     destination: { mode: 'new', name: 'Supplied name' } });
@@ -90,5 +99,6 @@ test('bundled generation engine → five real adapters → Python authority → 
   assert.equal(stats.job.callsUsed, 3);
   assert.deepEqual(stats.records.slice(previousCalls).map(call => [call.stage, call.count]), [['cards', 25], ['cards', 25], ['cards', 25]]);
   assert.ok(!JSON.stringify(received).includes('fake-python-only-credential-123'));
-  assert.equal(messages.filter(message => message.op === 'commit').length, 8);
+  // Five manual jobs, five automatic jobs, supplied-name, repair, and retained retry.
+  assert.equal(messages.filter(message => message.op === 'commit').length, 13);
 });

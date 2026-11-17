@@ -24,6 +24,7 @@ export const generatedDeckNameSchema = z.string()
   .transform(value => value.replace(/ *:{2,} */gu, ' — '))
   .pipe(deckName);
 export const deckNamingResultSchema = z.strictObject({ deckName: generatedDeckNameSchema });
+export const cardCountResultSchema = z.strictObject({ cardCount: z.number().int().min(1).max(100) });
 const newDeckName = z.union([z.string(), z.null()])
   .transform(value => value === null || !value.trim() ? null : value)
   .pipe(deckName.nullable());
@@ -34,7 +35,7 @@ export const requestSchema = z.strictObject({
     z.strictObject({ mode: z.literal('existing'), deckId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
     z.strictObject({ mode: z.literal('new'), name: newDeckName }),
   ]),
-  cardCount: z.number().int().min(1).max(100),
+  cardCount: z.number().int().min(1).max(100).nullable().optional().transform(value => value ?? null),
   topic: z.string().transform(value => value.normalize('NFC').trim()).pipe(z.union([z.literal(''), text(2000)])),
   source: z.strictObject({ name: text(255), selection: text(256), text: text(60000) }).optional(),
   difficulty: z.enum(['beginner', 'intermediate', 'advanced']).nullable().optional().transform(value => value ?? null),
@@ -51,7 +52,8 @@ export const basicCardSchema = z.strictObject({
 // Local acceptance schema. A provider adapter needs a simpler JSON wire schema;
 // arbitrary transformations/refinements cannot be enforced by the provider.
 export function resultSchema(request) {
-  const parsedRequest = requestSchema.parse(request);
+  const parsedRequest = requestSchema.refine(value => value.cardCount !== null,
+    { path: ['cardCount'], message: 'Choose a card count before validating generated cards.' }).parse(request);
   const needsName = parsedRequest.destination.mode === 'new' && parsedRequest.destination.name === null;
   return z.strictObject({
     deckName: needsName ? generatedDeckNameSchema : z.null(),

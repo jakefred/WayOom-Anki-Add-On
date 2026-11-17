@@ -256,7 +256,9 @@ class ApplicationRuntime:
         if state == "complete" and self.outcome:
             message = f"Added {self.outcome['count']} cards to {self.outcome['deckName']}"
         elif state in {"generating", "validating"}:
-            if job["stage"] == "naming":
+            if job["stage"] == "planning":
+                message = "Choosing card count…"
+            elif job["stage"] == "naming":
                 message = "Naming deck"
             else:
                 message = f"{labels[state]} — batch {job['batch'] + 1} of {(job['request']['cardCount'] + 24) // 25}; {job['acceptedCount']} validated drafts"

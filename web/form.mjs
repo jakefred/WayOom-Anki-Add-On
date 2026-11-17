@@ -3,7 +3,7 @@ import { classifyFailure, failureMessages, failureDiagnostic } from './failures.
 import { DocumentPanel } from './document-panel.mjs';
 
 const busyStates = new Set(['generating', 'validating', 'adding', 'starting']);
-const stageNames = { starting: 'Starting', naming: 'Naming deck', cards: 'Generating cards',
+const stageNames = { starting: 'Starting', planning: 'Choosing card count', naming: 'Naming deck', cards: 'Generating cards',
   validating: 'Validating cards', adding: 'Adding cards' };
 const providerNames = { openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google Gemini', xai: 'xAI', mistral: 'Mistral AI' };
 
@@ -25,12 +25,17 @@ export class GenerationPanel {
     this.errors = {};
     this.recoveryKey = '';
     this.difficultyEnabled = false;
+    this.automaticCount = false;
     this.documents = new DocumentPanel(document, () => {
       this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
     }, openDocument);
     this.get('generation-form').addEventListener('submit', event => { event.preventDefault(); void this.submit(); });
     this.get('retry').addEventListener('click', () => { void this.submit(); });
     this.get('refresh-decks').addEventListener('click', () => { void this.refreshDecks(); });
+    this.get('count-auto').addEventListener('click', () => {
+      this.automaticCount = !this.automaticCount;
+      this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
+    });
     this.get('difficulty-toggle').addEventListener('click', () => {
       this.difficultyEnabled = !this.difficultyEnabled;
       this.engine.discard(); this.terminal = null; this.clearErrors(); this.render();
@@ -75,7 +80,7 @@ export class GenerationPanel {
     const input = { requestId: 'form',
       destination: destination === 'new' ? { mode: 'new', name: this.get('deck-name').value }
         : { mode: 'existing', deckId: Number(destination) },
-      cardCount: count === '' ? NaN : Number(count), topic: this.get('topic').value,
+      cardCount: this.automaticCount ? null : count === '' ? NaN : Number(count), topic: this.get('topic').value,
       difficulty: this.difficultyEnabled ? this.get('difficulty').value : null, providerId: this.state.configuredProvider };
     if (this.documents.source) input.source = this.documents.source;
     const result = requestSchema.safeParse(input);
@@ -118,6 +123,7 @@ export class GenerationPanel {
       this.decks = [];
       this.get('generation-form').reset();
       this.difficultyEnabled = false;
+      this.automaticCount = false;
       this.documents.clear('', false);
       this.clearErrors();
     } else if (this.state.configurationToken !== undefined && state.configurationToken !== this.state.configurationToken) {
@@ -250,6 +256,11 @@ export class GenerationPanel {
       : busy ? this.state.provider ?? this.state.configuredProvider : this.state.configuredProvider ?? this.state.provider);
     this.text('provider', provider ? `Current Provider: ${providerNames[provider] ?? provider}` : 'Current Provider: not configured');
     this.get('form-fields').disabled = busy || this.closed;
+    this.get('count-auto').disabled = busy || this.closed;
+    this.get('count-auto').setAttribute('aria-checked', String(!this.automaticCount));
+    this.get('card-count-fields').hidden = this.automaticCount;
+    this.get('card-count').disabled = this.automaticCount || busy || this.closed;
+    this.get('card-count').required = !this.automaticCount;
     this.get('difficulty-toggle').disabled = busy || this.closed;
     this.get('difficulty-toggle').setAttribute('aria-checked', String(this.difficultyEnabled));
     this.get('difficulty-fields').hidden = !this.difficultyEnabled;

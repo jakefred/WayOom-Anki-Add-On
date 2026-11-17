@@ -249,6 +249,31 @@ test('count boundaries and all difficulty choices reach the engine through the s
   }
 });
 
+test('Set card count off hides the count and ignores its old invalid value; on restores it', async () => {
+  const h = await harness();
+  assert.equal(h.elements['#count-auto'].attributes['aria-checked'], 'true');
+  h.elements['#card-count'].value = '0';
+  await h.panel.submit();
+  const discards = h.engine.discards;
+  h.elements['#count-auto'].click();
+  assert.equal(h.elements['#card-count-fields'].hidden, true);
+  assert.equal(h.elements['#count-auto'].attributes['aria-checked'], 'false');
+  assert.equal(h.elements['#card-count'].disabled, true);
+  assert.equal(h.elements['#card-count-error'].textContent, '');
+  for (let i = 0; i < 5; i++) h.panel.setState({ ...ready });
+  await h.panel.submit();
+  assert.equal(h.requests.at(-1).cardCount, null);
+  h.elements['#count-auto'].click();
+  assert.equal(h.elements['#card-count-fields'].hidden, false);
+  assert.equal(h.elements['#count-auto'].attributes['aria-checked'], 'true');
+  assert.equal(h.elements['#card-count'].value, '0');
+  assert.ok(h.engine.discards > discards);
+  h.panel.setState({ ...ready, state: 'generating', canGenerate: false });
+  assert.equal(h.elements['#count-auto'].disabled, true);
+  h.panel.setState({ ...ready, profileEpoch: 2 });
+  assert.equal(h.elements['#count-auto'].attributes['aria-checked'], 'true');
+});
+
 test('idle status is absent; optional difficulty preserves its choice and invalidates retained drafts', async () => {
   const h = await harness();
   assert.equal(h.elements['#generation-status'].hidden, true);

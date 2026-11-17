@@ -57,16 +57,19 @@ def fake_response(path, body, headers):
             return []
         prompt = "\n".join(strings(body))
         naming = 'Return only {"deckName"' in prompt
+        planning = 'Return only {"cardCount"' in prompt
         requested = re.search(r"Return exactly (\d+) new cards", prompt)
         count = int(requested[1]) if requested else 0
-        records[-1].update(stage="naming" if naming else "cards", count=count)
+        records[-1].update(stage="planning" if planning else "naming" if naming else "cards", count=count)
         step = engine_script.pop(0) if engine_script else {"auto": True}
         if isinstance(step, dict) and "httpError" in step:
             return step["httpError"], b'{"error":{"message":"Fixture failure","type":"server_error","code":"server_error"}}'
         if isinstance(step, dict) and "rawText" in step:
             text = step["rawText"]
         elif step == {"auto": True}:
-            if naming:
+            if planning:
+                text = json.dumps({"cardCount": 28})
+            elif naming:
                 text = json.dumps({"deckName": "Biology::Cells"})
             else:
                 cards = []

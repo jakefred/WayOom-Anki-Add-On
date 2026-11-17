@@ -1,3 +1,4 @@
+![WayOom icon](assets/WayOom Korean Brush Calligraphy App Icon.png)
 # WayOom
 
 Turn a topic or document into Anki flashcards using your own AI provider.
@@ -8,7 +9,7 @@ answers between apps. You can also attach a document and focus on selected pages
 
 ## Features
 
-- Generate 1–100 Basic cards into an existing or new deck.
+- Generate 1–100 Basic cards into an existing or new deck, with an optional AI-chosen count.
 - Use OpenAI, Anthropic, Google Gemini, xAI, or Mistral with your own API key.
 - Attach a PDF, Word document, PowerPoint, or text file.
 - Select PDF pages or PowerPoint slides, with local English OCR for scanned PDFs.
@@ -40,7 +41,7 @@ AnkiMobile or AnkiDroid extension.
 ## Create cards
 
 1. Choose a deck, or select **Create new deck**. Leave its name blank for AI naming.
-2. Enter the number of cards.
+2. Leave **Set card count** on to enter a number, or turn it off to let the AI choose.
 3. Under **Instructions**, describe what you want to learn.
 4. Optionally enable **Set difficulty** and choose a level.
 5. Select **Generate**, then **View cards** to review the results.
@@ -48,6 +49,13 @@ AnkiMobile or AnkiDroid extension.
 You can cancel before card insertion begins. After insertion, use **Anki Undo**
 to undo the addition. If generation fails, **Retry** with unchanged inputs can reuse
 validated drafts. Editing an input discards those drafts.
+
+Both **Set card count** and **Set difficulty** reveal their fields when on and let
+WayOom decide when off. Turning **Set card count** off collapses the number field;
+turning it back on restores your last number. When off, the AI chooses 1–100 cards
+based on your instructions and selected document before generating them. This adds
+a small, billable planning request. An unchanged
+retry keeps the chosen count; changing inputs starts a new decision.
 
 Click the cream WayOom button immediately after **Sync** in Anki's toolbar to hide
 or restore the sidebar. **Tools → WayOom** does the same. Visibility is remembered

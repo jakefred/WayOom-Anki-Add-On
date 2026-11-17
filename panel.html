@@ -27,12 +27,12 @@
   input[type="file"] { font-size: .85rem; }
   #document-ocr-option { font-size: .85rem; font-weight: 400; }
   #document-name { overflow-wrap: anywhere; font-size: .85rem; }
-  .difficulty-heading { margin: 16px 0 6px; }
-  .difficulty-switch { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; font-weight: 600; }
-  .switch-track { width: 30px; height: 18px; padding: 2px; box-sizing: border-box; border-radius: 12px; background: var(--muted); }
+  .option-heading { margin: 16px 0 6px; }
+  .option-switch { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; font-weight: 600; }
+  .switch-track { width: 30px; height: 18px; padding: 2px; box-sizing: border-box; border-radius: 12px; background: var(--muted); flex: none; }
   .switch-track::after { content: ''; display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
-  .difficulty-switch[aria-checked="true"] .switch-track { background: #305fa6; }
-  .difficulty-switch[aria-checked="true"] .switch-track::after { transform: translateX(12px); }
+  .option-switch[aria-checked="true"] .switch-track { background: #305fa6; }
+  .option-switch[aria-checked="true"] .switch-track::after { transform: translateX(12px); }
   @media (max-width: 380px) { body { padding: 14px; } .brand { gap: 8px; } }
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   label { display: block; margin: 16px 0 6px; font-weight: 600; }
@@ -68,11 +68,14 @@
         <p id="deck-name-hint" class="hint">Leave blank for an AI-generated name.</p>
         <p id="deck-name-error" class="error" role="alert"></p>
       </div>
-      <div class="form-row"><div><label for="card-count">Number of cards</label>
-      <input id="card-count" type="number" min="1" max="100" step="1" value="10" required aria-describedby="card-count-error">
+      <div class="form-row"><div>
+      <div class="option-heading"><button id="count-auto" class="option-switch" type="button" role="switch" aria-checked="true" aria-controls="card-count-fields"><span class="switch-track" aria-hidden="true"></span>Set card count</button></div>
+      <div id="card-count-fields">
+      <input id="card-count" type="number" min="1" max="100" step="1" value="10" placeholder="Number of cards" aria-label="Number of cards" required aria-describedby="card-count-error">
       <p id="card-count-error" class="error" role="alert"></p>
+      </div>
 </div><div>
-      <div class="difficulty-heading"><button id="difficulty-toggle" class="difficulty-switch" type="button" role="switch" aria-checked="false" aria-controls="difficulty-fields"><span class="switch-track" aria-hidden="true"></span>Set difficulty</button></div>
+      <div class="option-heading"><button id="difficulty-toggle" class="option-switch" type="button" role="switch" aria-checked="false" aria-controls="difficulty-fields"><span class="switch-track" aria-hidden="true"></span>Set difficulty</button></div>
       <div id="difficulty-fields" hidden>
       <label for="difficulty" hidden>Difficulty level</label>
       <select id="difficulty" aria-describedby="difficulty-error">
