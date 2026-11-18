@@ -11,20 +11,16 @@ export const difficulties = ['beginner', 'intermediate', 'advanced'];
 const providers = ['openai', 'anthropic', 'google', 'xai', 'mistral'];
 
 export function openVerificationPeer({ python, args, env = process.env }) {
-  const child = spawn(python, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
-  let stderrSeen = false, localError = false, testResult, cancellationArmed = false, sent = false, lastCommit;
-  child.stderr.on('data', () => { stderrSeen = true; });
-  const widget = { addEventListener() {} };
-  const context = vm.createContext({ window: {}, document: { querySelector: () => widget },
-    pycmd: command => {
-      const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
-      context.window.wayoomBridge.receive({ v: 1, id: message.id, ok: true, result: {} });
-    }, TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
+  const context = vm.createContext({ window: {}, document: { readyState: 'loading', addEventListener() {} },
+    TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
     AbortController, AbortSignal, ReadableStream, TransformStream, setTimeout, clearTimeout,
     crypto: webcrypto, performance, btoa, atob,
   });
   vm.runInContext(readFileSync('web/dist/panel.js', 'utf8'), context);
   const { BridgeClient, GenerationEngine, runConnectionTest } = context.WayOomPanel;
+  const child = spawn(python, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
+  let stderrSeen = false, localError = false, testResult, cancellationArmed = false, sent = false, lastCommit;
+  child.stderr.on('data', () => { stderrSeen = true; });
   const client = new BridgeClient(command => {
     const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
     if (message.op === 'commit') lastCommit = message.payload.result;

@@ -9,19 +9,11 @@ import { webcrypto } from 'node:crypto';
 const loopback = process.env.WAYOOM_LOOPBACK_FAKE === '1';
 test(`five bundled SDK adapters: structured output, connection tests, cancellation (${loopback ? 'loopback HTTP' : 'socket-free fake'})`, { timeout: 20000 }, async t => {
   const python = process.env.WAYOOM_TEST_PYTHON ?? (existsSync('.venv/Scripts/python.exe') ? '.venv/Scripts/python.exe' : existsSync('.venv/bin/python') ? '.venv/bin/python' : 'python');
-  const child = spawn(python, ['-u', 'tests/integration/bridge_peer.py', ...(loopback ? ['--loopback'] : [])], { stdio: ['pipe', 'pipe', 'pipe'] });
-  let stderr = '';
-  child.stderr.on('data', data => { stderr += data; });
   const requests = [];
   const responses = [];
   const nativeResults = [];
-  const element = { addEventListener() {} };
   const context = vm.createContext({
-    window: {}, document: { querySelector: () => element },
-    pycmd: command => {
-      const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
-      context.window.wayoomBridge.receive({ v: 1, id: message.id, ok: true, result: {} });
-    },
+    window: {}, document: { readyState: 'loading', addEventListener() {} },
     TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response,
     AbortController, AbortSignal, ReadableStream, TransformStream, setTimeout, clearTimeout,
     crypto: webcrypto, performance, btoa, atob,
@@ -29,6 +21,9 @@ test(`five bundled SDK adapters: structured output, connection tests, cancellati
   vm.runInContext(readFileSync('web/dist/panel.js', 'utf8'), context);
   const { BridgeClient, createProviderModel, generateText, Output, jsonSchema, runConnectionTest, classifyFailure } = context.WayOomPanel;
   assert.equal(vm.runInContext('typeof process', context), 'undefined');
+  const child = spawn(python, ['-u', 'tests/integration/bridge_peer.py', ...(loopback ? ['--loopback'] : [])], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', data => { stderr += data; });
   const client = new BridgeClient(command => {
     const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
     requests.push(message);
@@ -37,6 +32,7 @@ test(`five bundled SDK adapters: structured output, connection tests, cancellati
     if (event.event === 'connection-test') runConnectionTest(client, event).catch(() => {});
     if (event.event === 'fixture-native-result') nativeResults.push(event.category);
   } });
+  child.stdin.on('error', () => client.close('provider'));
   const lines = createInterface({ input: child.stdout });
   lines.on('line', line => {
     const response = JSON.parse(line);

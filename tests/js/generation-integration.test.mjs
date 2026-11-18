@@ -8,16 +8,15 @@ import { webcrypto } from 'node:crypto';
 
 test('bundled generation engine → five real adapters → Python authority → disposable real Anki', { timeout: 30000 }, async t => {
   const python = process.env.WAYOOM_TEST_PYTHON ?? (existsSync('.venv/Scripts/python.exe') ? '.venv/Scripts/python.exe' : existsSync('.venv/bin/python') ? '.venv/bin/python' : 'python');
-  const child = spawn(python, ['-u', 'tests/integration/bridge_peer.py', '--generation'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  let stderr = ''; child.stderr.on('data', data => { stderr += data; });
-  const widget = { addEventListener() {} };
-  const context = vm.createContext({ window: {}, document: { querySelector: () => widget },
-    pycmd: command => { const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length)); context.window.wayoomBridge.receive({ v: 1, id: message.id, ok: true, result: {} }); },
+  // Exercise the bundle's exports and leave the browser form unmounted.
+  const context = vm.createContext({ window: {}, document: { readyState: 'loading', addEventListener() {} },
     TextEncoder, TextDecoder, URL, URLSearchParams, Headers, Request, Response, AbortController, AbortSignal,
     ReadableStream, TransformStream, setTimeout, clearTimeout, crypto: webcrypto, performance, btoa, atob,
   });
   vm.runInContext(readFileSync('web/dist/panel.js', 'utf8'), context);
   const { BridgeClient, GenerationEngine } = context.WayOomPanel;
+  const child = spawn(python, ['-u', 'tests/integration/bridge_peer.py', '--generation'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let stderr = ''; child.stderr.on('data', data => { stderr += data; });
   const messages = [];
   const client = new BridgeClient(command => {
     const message = JSON.parse(command.slice('wayoom:v1:rpc:'.length));
