@@ -2,21 +2,47 @@
 
 # WayOom
 
-Turn a topic or document into Anki flashcards using your own AI provider.
+Use your AI api token to generate simple text flashcards. You can write your own instructions or upload documents and text images.
 
-WayOom adds a sidebar to Anki for creating plain-text question-and-answer cards.
-Choose a deck, describe what you want to learn, and generate cards without copying
-answers between apps. You can also attach a document and focus on selected pages.
+I recommend starting with cheap models and moving up if the flashcards you need are simple. WayOom uses very explicit examples to ensure the cards come out in the exact format needed for anki flashcards and verifies that it looks good before adding it.
+
+The addon is a sidebar that you can collapse with the stylized 외움 button next to sync in the top bar.
+
+When you first download WayOom it will start in the settings window where you can add your api token. WayOom will not work without an api token. If you need one there's a link in the settings to OpenAI api tokens. You can't use a basic subscription with most companies but it's probably not as expensive as you think.
+
+Supported AI providers:
+
+- OpenAI/ChatGPT
+- Anthropic/Claude
+- Google/Gemini
+- xAI/Grok
+- Mistral AI
+
+Supported Optical Character Recognition (image to text) languages:
+
+- English
+- Korean
+- Japanese
+- Spanish
+- French
+- German
+- Portuguese
+- Italian
+- Russian
+- Chinese (simplified)
+- Chinese (traditional)
+- Arabic
+- Hindi
+
+(Open Source OCR Tesseract is used for this)
 
 ## Features
 
-- Generate 1–100 Basic cards into an existing or new deck, with an optional AI-chosen count.
-- Use OpenAI, Anthropic, Google Gemini, xAI, or Mistral with your own API key.
-- Attach a PDF, Word document, PowerPoint, text file, or PNG/JPEG/WebP image.
-- Select PDF pages or PowerPoint slides, with local OCR in 13 languages for scanned PDFs.
-- Leave difficulty automatic, or choose Beginner, Intermediate, or Advanced.
+- Generate 1–100 cards - you can select the number or let AI decide for you.
+- Attach a PDF, Word document, PowerPoint, text file, or PNG/JPEG/WebP image and select which pages to use (up to 50 pages).
+- Select the difficulty of the flashcards or turn it off
 - Hide the sidebar from Anki's toolbar and continue reviewing.
-- View generated cards in Anki's Browser and undo additions with Anki Undo.
+- View all the cards after generation in Anki's Browser and undo additions with Anki Undo.
 
 **Preview release:** AI output can contain mistakes. Review generated cards before
 studying them. Live-provider compatibility and full Windows, macOS, and Linux
